@@ -134,6 +134,65 @@ def scrape_draw_tables():
     else:
         logger.warning("⚠️ No draws scraped.")
 
+def generate_statistics_from_past_numbers():
+    """Generate statistics.txt from past_numbers.txt data"""
+    if not os.path.exists('past_numbers.txt'):
+        return
+    
+    main_freq = Counter()
+    bonus_freq = Counter()
+    all_pairs = []
+    
+    with open('past_numbers.txt', 'r') as f:
+        lines = f.readlines()[1:]  # Skip header
+        for line in lines:
+            parts = line.strip().split(',')
+            if len(parts) >= 2:
+                numbers = [int(n) for n in parts[1].split('-')]
+                main_nums = numbers[:-1]
+                bonus_num = numbers[-1]
+                
+                # Count frequencies
+                for num in main_nums:
+                    main_freq[num] += 1
+                bonus_freq[bonus_num] += 1
+                
+                # Collect pairs
+                for i in range(len(main_nums)):
+                    for j in range(i+1, len(main_nums)):
+                        all_pairs.append(tuple(sorted([main_nums[i], main_nums[j]])))
+    
+    # Get common pairs
+    pair_freq = Counter(all_pairs)
+    common_pairs = pair_freq.most_common(20)
+    
+    # Hot numbers (most frequent)
+    hot_numbers = dict(main_freq.most_common(15))
+    
+    # Overdue numbers (least frequent, simulated as days)
+    overdue_numbers = {num: 100 - freq for num, freq in main_freq.most_common()[-15:]}
+    
+    # Write statistics file
+    with open('statistics.txt', 'w') as f:
+        f.write("Main Number Frequencies:\n")
+        for num, freq in main_freq.items():
+            f.write(f"{num}: {freq}\n")
+        
+        f.write("\nBonus Number Frequencies:\n")
+        for num, freq in bonus_freq.items():
+            f.write(f"{num}: {freq}\n")
+        
+        f.write("\nHot Numbers:\n")
+        for num, freq in hot_numbers.items():
+            f.write(f"{num}: {freq}\n")
+        
+        f.write("\nOverdue Numbers (days since last drawn):\n")
+        for num, days in overdue_numbers.items():
+            f.write(f"{num}: {days}\n")
+        
+        f.write("\nCommon Pairs:\n")
+        for (num1, num2), freq in common_pairs:
+            f.write(f"{num1}-{num2}: {freq}\n")
 
 # Load data from files if no fetch needed
 def load_from_files():
@@ -141,6 +200,10 @@ def load_from_files():
     data = {'main_freq': {}, 'bonus_freq': {}, 'hot_numbers': {}, 'overdue_numbers': {}, 'common_pairs': [], 'latest_draw': {}}
     
     try:
+        # Generate statistics from past_numbers.txt if statistics.txt doesn't exist
+        if not os.path.exists('statistics.txt'):
+            generate_statistics_from_past_numbers()
+        
         # Load statistics.txt
         with open('statistics.txt', 'r') as f:
             lines = f.readlines()
@@ -166,26 +229,34 @@ def load_from_files():
                         data[section].append((num1, num2))
                     else:
                         data[section][int(num)] = int(value)
+                elif line and section == 'common_pairs' and '-' in line:
+                    # Handle common pairs without frequency values
+                    num1, num2 = map(int, line.split('-'))
+                    data[section].append((num1, num2))
         
         # Load past_numbers.txt
         with open('past_numbers.txt', 'r') as f:
             lines = f.readlines()
             if len(lines) > 1:
-                last_line = lines[-1].strip()
-                date, numbers, jackpot = last_line.split(',')
+                last_line = lines[1].strip()  # Skip header, get first data line
+                parts = last_line.split(',')
+                date = parts[0]
+                numbers = parts[1]
+                jackpot = ','.join(parts[2:]) if len(parts) > 2 else ''
                 numbers = [int(n) for n in numbers.split('-')]
                 data['latest_draw'] = {
                     'date': date,
                     'numbers': numbers[:-1],
                     'bonus': numbers[-1],
-                    'jackpot': jackpot
+                    'jackpot': jackpot.strip('"')
                 }
         
         logger.info("🎉 Loaded data from files like a champ! 🚀")
         return data
     except Exception as e:
         logger.error("😣 Trouble loading files: %s. Fetching fresh data! 🌟", e)
-        return scrape_draw_tables()
+        scrape_draw_tables()
+        return load_from_files()
 
 # Generate one set of numbers
 def generate_number_set(data):
@@ -194,13 +265,19 @@ def generate_number_set(data):
     overdue_numbers = data['overdue_numbers']
     common_pairs = data['common_pairs']
     
-    # Pick a common pair
-    selected_pair = random.choice(common_pairs)
-    main_numbers = list(selected_pair)
+    # Pick a common pair (fallback if empty)
+    if common_pairs:
+        selected_pair = random.choice(common_pairs)
+        main_numbers = list(selected_pair)
+    else:
+        main_numbers = [random.randint(1, 50), random.randint(1, 50)]
+        while main_numbers[0] == main_numbers[1]:
+            main_numbers[1] = random.randint(1, 50)
     
     # Add hot numbers, no dupes
     hot_candidates = [num for num in hot_numbers.keys() if num not in main_numbers]
-    main_numbers.extend(random.sample(hot_candidates, min(3, len(hot_candidates))))
+    if hot_candidates:
+        main_numbers.extend(random.sample(hot_candidates, min(3, len(hot_candidates))))
     
     # Add one overdue number
     overdue_candidates = [num for num in overdue_numbers.keys() if num not in main_numbers]
@@ -235,8 +312,11 @@ def generate_number_set(data):
                 available_nums.remove(new_num)
     
     # Pick bonus number based on freq
-    bonus_prob = {k: v/sum(data['bonus_freq'].values()) for k, v in data['bonus_freq'].items()}
-    bonus_number = random.choices(list(bonus_prob.keys()), weights=list(bonus_prob.values()), k=1)[0]
+    if data['bonus_freq']:
+        bonus_prob = {k: v/sum(data['bonus_freq'].values()) for k, v in data['bonus_freq'].items()}
+        bonus_number = random.choices(list(bonus_prob.keys()), weights=list(bonus_prob.values()), k=1)[0]
+    else:
+        bonus_number = random.randint(1, 50)
     
     return sorted(main_numbers), bonus_number
 
@@ -261,7 +341,8 @@ def main():
     
     # Fetch or load data
     if should_fetch_data():
-        data = scrape_draw_tables()
+        scrape_draw_tables()
+        data = load_from_files()
     else:
         data = load_from_files()
     
