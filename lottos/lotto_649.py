@@ -21,8 +21,8 @@ class Lotto649(BaseLottery):
     
     def get_scraping_urls(self):
         """Return URLs for scraping Lotto 6/49 data"""
-        # Lotto 6/49 started in 1982, but we'll scrape from 1990 to present
-        return [f"https://ca.lottonumbers.com/lotto-649/numbers/{year}" for year in range(1990, 2026)]
+        # Lotto 6/49 started in 1982, scraping complete history
+        return [f"https://ca.lottonumbers.com/lotto-649/numbers/{year}" for year in range(1982, 2026)]
     
     def should_fetch_data(self):
         """Check if we need to fetch new Lotto 6/49 data"""
@@ -172,7 +172,9 @@ class Lotto649(BaseLottery):
             # Get jackpot from third column (if available)
             jackpot = "Unknown"
             if len(cols) > 2:
-                jackpot = cols[2].text.strip()
+                jackpot_raw = cols[2].text.strip()
+                # Clean up jackpot text - remove newlines and extra whitespace
+                jackpot = ' '.join(jackpot_raw.split())
             
             # Format date to match our format (M/D/YYYY)
             try:

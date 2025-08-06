@@ -85,7 +85,9 @@ class BaseLottery(ABC):
         with open(self.past_numbers_file, "w") as f:
             f.write("Date,Draw Results,Jackpot\n")
             for draw in draws:
-                f.write(f"{draw[0]},{draw[1]},\"{draw[2]}\"\n")
+                # Clean jackpot text and escape quotes properly
+                jackpot_clean = str(draw[2]).replace('\n', ' ').replace('\r', ' ').replace('"', '""')
+                f.write(f"{draw[0]},{draw[1]},\"{jackpot_clean}\"\n")
     
     def generate_statistics_from_past_numbers(self):
         """Generate comprehensive statistics.txt from past_numbers.txt data"""
