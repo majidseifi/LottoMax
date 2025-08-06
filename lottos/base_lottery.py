@@ -322,7 +322,7 @@ class BaseLottery(ABC):
         if data['main_freq']:
             hot = sorted(data['main_freq'].items(), key=lambda x: x[1], reverse=True)[:15]
             hot_nums = [num for num, freq in hot]
-            summary += "🔥 HOT LOTTO MAX NUMBERS (Most Frequent):\n"
+            summary += f"🔥 HOT {self.name.upper()} NUMBERS (Most Frequent):\n"
             summary += f"   {hot_nums[:10]}\n"
             summary += f"   {hot_nums[10:]}\n\n"
         
@@ -330,7 +330,7 @@ class BaseLottery(ABC):
         if data['main_freq']:
             cold = sorted(data['main_freq'].items(), key=lambda x: x[1])[:15]
             cold_nums = [num for num, freq in cold]
-            summary += "🥶 COLD LOTTO MAX NUMBERS (Least Frequent):\n"
+            summary += f"🥶 COLD {self.name.upper()} NUMBERS (Least Frequent):\n"
             summary += f"   {cold_nums[:10]}\n"
             summary += f"   {cold_nums[10:]}\n\n"
         
@@ -339,7 +339,7 @@ class BaseLottery(ABC):
             # Calculate overdue based on inverse frequency
             all_freq = sorted(data['main_freq'].items(), key=lambda x: x[1])[:15]
             overdue_nums = [num for num, freq in all_freq]
-            summary += "⏰ MOST OVERDUE LOTTO MAX NUMBERS:\n"
+            summary += f"⏰ MOST OVERDUE {self.name.upper()} NUMBERS:\n"
             summary += f"   {overdue_nums[:10]}\n"
             summary += f"   {overdue_nums[10:]}\n\n"
         

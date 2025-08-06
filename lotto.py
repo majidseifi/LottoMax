@@ -13,6 +13,7 @@ from typing import Dict, Any
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from lottos.lotto_max import LottoMax
+from lottos.daily_grand import DailyGrand
 from lottos.strategies.base_strategy import StrategyManager
 
 # Setup main logging (no console output, only file logging)
@@ -30,7 +31,7 @@ class LottoApp:
         self.lotteries = {
             '1': LottoMax(),
             # '2': Lotto649(),     # To be implemented
-            # '3': DailyGrand(),   # To be implemented
+            '3': DailyGrand(),
         }
         self.strategy_manager = StrategyManager()
         self.current_lottery = None
@@ -47,7 +48,7 @@ class LottoApp:
         print("="*50)
         print("1. 🎯 Lotto Max")
         print("2. 🎲 Lotto 6/49 (Coming Soon)")
-        print("3. 🌟 Daily Grand (Coming Soon)")
+        print("3. 🌟 Daily Grand")
         print("4. ⚙️  System Config")
         print("5. 🚪 Exit")
         print("="*50)
@@ -145,8 +146,8 @@ class LottoApp:
                 print("🚧 Lotto 6/49 coming soon! 🚧")
                 input("Press Enter to continue...")
             elif choice == 3:
-                print("🚧 Daily Grand coming soon! 🚧")
-                input("Press Enter to continue...")
+                self.current_lottery = self.lotteries['3']
+                self.handle_lottery_menu()
             elif choice == 4:
                 self.handle_config_menu()
             elif choice == 5:
