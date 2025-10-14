@@ -107,7 +107,8 @@ class LottoApp:
         debug_status = "ON" if self.debug_mode else "OFF"
         print(f"1. 🐛 Debug Mode: {debug_status}")
         print("2. 🌐 Update Lottery Data from API")
-        print("3. 🔍 Check for Missing Data")
+        print("3. 🔍 Quick Data Check (last 3 years)")
+        print("4. 🔍 Full Data Check (all years - slower)")
         print("0. ⬅️  Back to Main Menu")
         print("="*50)
     
@@ -340,19 +341,34 @@ class LottoApp:
         print("✨ API update process completed!")
         input("\nPress Enter to continue...")
 
-    def check_for_missing_data(self):
+    def check_for_missing_data(self, quick_check=False):
         """Check all lotteries for missing data by comparing with API"""
         print("\n" + "="*50)
-        print("🔍 Checking data integrity (comparing with API)...")
-        print("This may take a minute as we check each year...")
-        print("="*50)
+        if quick_check:
+            print("🔍 Quick Data Integrity Check (last 3 years only)")
+            print("="*50)
+        else:
+            print("🔍 Full Data Integrity Check (all years)")
+            print("This will take a few minutes...")
+            print("="*50)
 
         # Check all lotteries for missing data
         missing_data = {}
         for key, lottery in self.lotteries.items():
             try:
                 print(f"\n🔎 Checking {lottery.name}...")
-                years_with_issues = lottery.check_for_missing_years()
+
+                # Progress callback to show year being checked
+                def show_progress(year, idx, total):
+                    print(f"   Progress: {year} ({idx}/{total})", end='\r')
+
+                years_with_issues = lottery.check_for_missing_years(
+                    quick_check=quick_check,
+                    progress_callback=show_progress
+                )
+
+                # Clear progress line
+                print(" " * 50, end='\r')
 
                 if years_with_issues:
                     missing_data[lottery.name] = years_with_issues
@@ -510,7 +526,7 @@ class LottoApp:
         """Handle system configuration menu"""
         while True:
             self.show_config_menu()
-            choice = self.get_user_choice(3, allow_zero=True)
+            choice = self.get_user_choice(4, allow_zero=True)
 
             if choice == 1:
                 self.debug_mode = not self.debug_mode
@@ -521,7 +537,9 @@ class LottoApp:
             elif choice == 2:
                 self.update_lottery_data_from_api()
             elif choice == 3:
-                self.check_for_missing_data()
+                self.check_for_missing_data(quick_check=True)
+            elif choice == 4:
+                self.check_for_missing_data(quick_check=False)
             elif choice == 0:
                 return
     

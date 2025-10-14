@@ -84,17 +84,31 @@ Each lottery has its own data directory (`data/{lottery_name}/`):
 
 ### Data Integrity
 
-**Missing Data Detection:**
-- `check_for_missing_years()` scans `past_numbers.txt` and identifies gaps
-- Compares present years against expected range (lottery start year to current year)
-- Returns list of missing years
+**Missing Data Detection (Optimized):**
+- `_get_local_draw_counts()` - Single-pass file reading, builds year→count dictionary (O(n) time, O(years) space)
+- `check_for_missing_years()` - Compares local vs API draw counts per year
+  - **Quick Check Mode**: Only checks last 3 years (~9 API calls total)
+  - **Full Check Mode**: Checks all years (e.g., 44 years for Lotto 649 = ~130 API calls)
+- Uses progress callbacks for real-time status updates
+- Returns dictionary mapping year → {api_count, local_count, missing}
+
+**Performance Optimizations:**
+1. **Single-pass local file reading**: Parses file once, builds hash map (was: multiple passes)
+2. **Dictionary lookups**: O(1) year lookup instead of searching
+3. **Quick check mode**: Only check recent data for routine verification
+4. **Progress indicators**: Shows "year (x/total)" in real-time
+5. **Lazy evaluation**: Only fetches API data when needed
 
 **Missing Data Repair:**
-- `fetch_missing_years(years)` fetches specific years from API
-- Merges new data with existing data
-- Removes duplicates (keeps first occurrence by date)
+- `fetch_missing_years(years_dict)` refetches problematic years
+- Removes local data for those years, replaces with fresh API data
+- Merges with untouched years, removes duplicates
 - Sorts chronologically (newest first)
 - Auto-regenerates statistics after merge
+
+**Typical Check Times:**
+- Quick Check (3 years × 3 lotteries): ~15-20 seconds
+- Full Check (all years): ~3-5 minutes depending on API speed
 
 ## API Integration
 
