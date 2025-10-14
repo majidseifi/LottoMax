@@ -1,0 +1,1170 @@
+Lotto max:
+/GET Lotto Max years:
+
+url = "https://canada-lottery.p.rapidapi.com/lottomax/years"
+
+--- SCHEMA EXAMPLES ---
+-- 200 --
+{
+  "type": "array"
+}
+-- 404 --
+Not Found
+-- 422 --
+{
+  "properties": {
+    "detail": {
+      "items": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      },
+      "type": "array",
+      "title": "Detail"
+    }
+  },
+  "type": "object",
+  "title": "HTTPValidationError"
+}
+-- 500 --
+Internal server error
+
+/GET Lotto Max results by year:
+
+url = "https://canada-lottery.p.rapidapi.com/lottomax/years/%7Byear%7D"
+
+--- SCHEMA EXAMPLES ---
+-- 200 --
+{
+  "type": "array",
+  "items": {
+    "properties": {
+      "date": {
+        "type": "string",
+        "format": "date",
+        "title": "Date"
+      },
+      "prize": {
+        "type": "number",
+        "title": "Prize"
+      },
+      "numbers": {
+        "items": {
+          "type": "integer"
+        },
+        "type": "array",
+        "title": "Numbers"
+      },
+      "bonus": {
+        "type": "integer",
+        "title": "Bonus"
+      }
+    },
+    "type": "object",
+    "required": [
+      "date",
+      "prize",
+      "numbers",
+      "bonus"
+    ],
+    "title": "Numbers",
+    "description": "Model represent numbers results"
+  },
+  "title": "Response Get Lottomax Result By Year Lottomax Years  Year  Get"
+}
+-- 404 --
+Not Found
+-- 422 --
+{
+  "properties": {
+    "detail": {
+      "items": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      },
+      "type": "array",
+      "title": "Detail"
+    }
+  },
+  "type": "object",
+  "title": "HTTPValidationError"
+}
+-- 500 --
+Internal server error
+
+
+/GET Lotto Max results by date
+
+url = "https://canada-lottery.p.rapidapi.com/lottomax/results/%7Bdate%7D"
+
+--- SCHEMA EXAMPLES ---
+-- 200 --
+{
+  "properties": {
+    "summary": {
+      "properties": {
+        "ticketSold": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Ticketsold"
+        },
+        "totalSale": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Totalsale"
+        },
+        "totalWinners": {
+          "type": "integer",
+          "title": "Totalwinners"
+        },
+        "totalPrizeFund": {
+          "type": "number",
+          "title": "Totalprizefund"
+        },
+        "winningRatio": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Winningratio"
+        },
+        "saleDifferencePreviousDraw": {
+          "type": "string",
+          "title": "Saledifferencepreviousdraw"
+        }
+      },
+      "type": "object",
+      "required": [
+        "ticketSold",
+        "totalSale",
+        "totalWinners",
+        "totalPrizeFund",
+        "winningRatio",
+        "saleDifferencePreviousDraw"
+      ],
+      "title": "Summary",
+      "description": "General information on a lotto max result"
+    },
+    "numbersMatched": {
+      "items": {
+        "properties": {
+          "match": {
+            "type": "string",
+            "title": "Match"
+          },
+          "prizePerWinner": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prizeperwinner"
+          },
+          "totalWinners": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Totalwinners"
+          },
+          "prizeFund": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prizefund"
+          }
+        },
+        "type": "object",
+        "required": [
+          "match",
+          "prizePerWinner",
+          "totalWinners",
+          "prizeFund"
+        ],
+        "title": "NumbersMatched",
+        "description": "Statistic Numbers Matched"
+      },
+      "type": "array",
+      "title": "Numbersmatched"
+    }
+  },
+  "type": "object",
+  "required": [
+    "summary",
+    "numbersMatched"
+  ],
+  "title": "PrizeBreakdown",
+  "description": "Model represent prize statistic"
+}
+-- 404 --
+Not Found
+-- 422 --
+{
+  "properties": {
+    "detail": {
+      "items": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      },
+      "type": "array",
+      "title": "Detail"
+    }
+  },
+  "type": "object",
+  "title": "HTTPValidationError"
+}
+-- 500 --
+Internal server error
+
+/GET Lotto Max results by date and Region
+
+url = "https://canada-lottery.p.rapidapi.com/lottomax/results/%7Bdate%7D/regions/%7Bregion%7D"
+
+--- SCHEMA EXAMPLES ---
+-- 200 --
+{
+  "type": "array",
+  "items": {
+    "type": "object",
+    "properties": {
+      "match": {
+        "type": "string"
+      },
+      "prizePerWinner": {
+        "type": "integer"
+      },
+      "totalWinners": {
+        "type": "integer"
+      },
+      "prizeFund": {
+        "type": "integer"
+      }
+    }
+  }
+}
+
+------------------------------------
+6/49:
+/GET 6/49 years:
+
+url = "https://canada-lottery.p.rapidapi.com/6-49/years"
+
+--- SCHEMA EXAMPLES ---
+-- 200 --
+{
+  "type": "array",
+  "items": {
+    "type": "integer"
+  },
+  "title": "Response Get Six Fourty Nine Years 6 49 Years Get"
+}
+-- 404 --
+Not Found
+-- 422 --
+{
+  "properties": {
+    "detail": {
+      "items": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      },
+      "type": "array",
+      "title": "Detail"
+    }
+  },
+  "type": "object",
+  "title": "HTTPValidationError"
+}
+-- 500 --
+Internal server error
+
+/GET 6/49 results by year:
+
+url = "https://canada-lottery.p.rapidapi.com/6-49/years/%7Byear%7D"
+
+--- SCHEMA EXAMPLES ---
+-- 200 --
+{
+  "type": "array",
+  "items": {
+    "properties": {
+      "date": {
+        "type": "string",
+        "format": "date",
+        "title": "Date"
+      },
+      "classic": {
+        "properties": {
+          "numbers": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Numbers"
+          },
+          "bonus": {
+            "type": "integer",
+            "title": "Bonus"
+          },
+          "prize": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prize"
+          }
+        },
+        "type": "object",
+        "required": [
+          "numbers",
+          "bonus",
+          "prize"
+        ],
+        "title": "Classic",
+        "description": "Model represent classic numbers results for 6/49"
+      },
+      "guaranteed": {
+        "anyOf": [
+          {
+            "items": {
+              "properties": {
+                "numbers": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array",
+                  "title": "Numbers"
+                },
+                "prize": {
+                  "type": "number",
+                  "title": "Prize"
+                }
+              },
+              "type": "object",
+              "required": [
+                "numbers",
+                "prize"
+              ],
+              "title": "Guaranteed"
+            },
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "title": "Guaranteed"
+      },
+      "goldBall": {
+        "anyOf": [
+          {
+            "properties": {
+              "number": {
+                "type": "string",
+                "title": "Number"
+              },
+              "prize": {
+                "type": "number",
+                "title": "Prize"
+              },
+              "isGoldBallDrawn": {
+                "type": "boolean",
+                "title": "Isgoldballdrawn"
+              }
+            },
+            "type": "object",
+            "required": [
+              "number",
+              "prize",
+              "isGoldBallDrawn"
+            ],
+            "title": "GoldBall"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      }
+    },
+    "type": "object",
+    "required": [
+      "date",
+      "classic",
+      "guaranteed",
+      "goldBall"
+    ],
+    "title": "Result",
+    "description": "Model represent numbers results for 6/49"
+  },
+  "title": "Response Get Six Fourty Nine Result By Year 6 49 Years  Year  Get"
+}
+-- 404 --
+Not Found
+-- 422 --
+{
+  "properties": {
+    "detail": {
+      "items": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      },
+      "type": "array",
+      "title": "Detail"
+    }
+  },
+  "type": "object",
+  "title": "HTTPValidationError"
+}
+-- 500 --
+Internal server error
+
+/GET 6/49 results by date:
+
+url = "https://canada-lottery.p.rapidapi.com/6-49/results/%7Bdate%7D"
+
+--- SCHEMA EXAMPLES ---
+-- 200 --
+{
+  "properties": {
+    "summary": {
+      "properties": {
+        "totalWinners": {
+          "type": "integer",
+          "title": "Totalwinners"
+        },
+        "totalPrizeFund": {
+          "type": "number",
+          "title": "Totalprizefund"
+        }
+      },
+      "type": "object",
+      "required": [
+        "totalWinners",
+        "totalPrizeFund"
+      ],
+      "title": "Summary",
+      "description": "Model represent total winners and total prize fund"
+    },
+    "numbersMatched": {
+      "items": {
+        "properties": {
+          "match": {
+            "type": "string",
+            "title": "Match"
+          },
+          "prizePerWinner": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prizeperwinner"
+          },
+          "totalWinners": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Totalwinners"
+          },
+          "prizeFund": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prizefund"
+          }
+        },
+        "type": "object",
+        "required": [
+          "match",
+          "prizePerWinner",
+          "totalWinners",
+          "prizeFund"
+        ],
+        "title": "NumbersMatched",
+        "description": "Statistic Numbers Matched"
+      },
+      "type": "array",
+      "title": "Numbersmatched"
+    }
+  },
+  "type": "object",
+  "required": [
+    "summary",
+    "numbersMatched"
+  ],
+  "title": "PrizeBreakdown",
+  "description": "Model represent prize statistic for 6/49 draw"
+}
+-- 404 --
+Not Found
+-- 422 --
+{
+  "properties": {
+    "detail": {
+      "items": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      },
+      "type": "array",
+      "title": "Detail"
+    }
+  },
+  "type": "object",
+  "title": "HTTPValidationError"
+}
+-- 500 --
+Internal server error
+
+
+------------------------------------
+Daily Grand:
+/GET Daily Grand years:
+
+url = "https://canada-lottery.p.rapidapi.com/daily-grand/years"
+
+--- SCHEMA EXAMPLES ---
+-- 200 --
+{
+  "type": "array",
+  "items": {
+    "type": "integer"
+  },
+  "title": "Response Get Daily Grand Years Daily Grand Years Get"
+}
+-- 404 --
+Not Found
+-- 422 --
+{
+  "properties": {
+    "detail": {
+      "items": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      },
+      "type": "array",
+      "title": "Detail"
+    }
+  },
+  "type": "object",
+  "title": "HTTPValidationError"
+}
+-- 500 --
+Internal server error
+
+/GET Daily Grand results by year:
+
+url = "https://canada-lottery.p.rapidapi.com/daily-grand/years/%7Byear%7D"
+
+--- SCHEMA EXAMPLES ---
+-- 200 --
+{
+  "type": "array",
+  "items": {
+    "properties": {
+      "date": {
+        "type": "string",
+        "format": "date",
+        "title": "Date"
+      },
+      "numbers": {
+        "items": {
+          "type": "integer"
+        },
+        "type": "array",
+        "title": "Numbers"
+      },
+      "grandNumber": {
+        "type": "integer",
+        "title": "Grandnumber"
+      },
+      "prize": {
+        "type": "number",
+        "title": "Prize"
+      },
+      "bonusesDraw": {
+        "items": {
+          "properties": {
+            "numbers": {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array",
+              "title": "Numbers"
+            },
+            "prize": {
+              "type": "number",
+              "title": "Prize"
+            }
+          },
+          "type": "object",
+          "required": [
+            "numbers",
+            "prize"
+          ],
+          "title": "BonusDraw"
+        },
+        "type": "array",
+        "title": "Bonusesdraw"
+      }
+    },
+    "type": "object",
+    "required": [
+      "date",
+      "numbers",
+      "grandNumber",
+      "prize",
+      "bonusesDraw"
+    ],
+    "title": "Result",
+    "description": "Model represent numbers results for Daily Grand"
+  },
+  "title": "Response Get Daily Grand Result By Year Daily Grand Years  Year  Get"
+}
+-- 404 --
+Not Found
+-- 422 --
+{
+  "properties": {
+    "detail": {
+      "items": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      },
+      "type": "array",
+      "title": "Detail"
+    }
+  },
+  "type": "object",
+  "title": "HTTPValidationError"
+}
+-- 500 --
+Internal server error
+
+/GET Daily Grand results by date:
+
+url = "https://canada-lottery.p.rapidapi.com/daily-grand/results/%7Bdate%7D"
+
+--- SCHEMA EXAMPLES ---
+-- 200 --
+{
+  "properties": {
+    "mainBreakdown": {
+      "properties": {
+        "summary": {
+          "properties": {
+            "totalWinners": {
+              "type": "integer",
+              "title": "Totalwinners"
+            },
+            "totalPrizeFund": {
+              "type": "number",
+              "title": "Totalprizefund"
+            }
+          },
+          "type": "object",
+          "required": [
+            "totalWinners",
+            "totalPrizeFund"
+          ],
+          "title": "Summary",
+          "description": "Model represent total winners and total prize fund"
+        },
+        "numbersMatched": {
+          "items": {
+            "properties": {
+              "match": {
+                "type": "string",
+                "title": "Match"
+              },
+              "prizePerWinner": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Prizeperwinner"
+              },
+              "totalWinners": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Totalwinners"
+              },
+              "prizeFund": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Prizefund"
+              }
+            },
+            "type": "object",
+            "required": [
+              "match",
+              "prizePerWinner",
+              "totalWinners",
+              "prizeFund"
+            ],
+            "title": "NumbersMatched",
+            "description": "Statistic Numbers Matched"
+          },
+          "type": "array",
+          "title": "Numbersmatched"
+        }
+      },
+      "type": "object",
+      "required": [
+        "summary",
+        "numbersMatched"
+      ],
+      "title": "DetailBreakDown",
+      "description": "Model represent main breakdown for daily grand"
+    },
+    "bonusesBreakdown": {
+      "anyOf": [
+        {
+          "properties": {
+            "summary": {
+              "properties": {
+                "totalWinners": {
+                  "type": "integer",
+                  "title": "Totalwinners"
+                },
+                "totalPrizeFund": {
+                  "type": "number",
+                  "title": "Totalprizefund"
+                }
+              },
+              "type": "object",
+              "required": [
+                "totalWinners",
+                "totalPrizeFund"
+              ],
+              "title": "Summary",
+              "description": "Model represent total winners and total prize fund"
+            },
+            "numbersMatched": {
+              "items": {
+                "properties": {
+                  "match": {
+                    "type": "string",
+                    "title": "Match"
+                  },
+                  "prizePerWinner": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "title": "Prizeperwinner"
+                  },
+                  "totalWinners": {
+                    "anyOf": [
+                      {
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "title": "Totalwinners"
+                  },
+                  "prizeFund": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "title": "Prizefund"
+                  }
+                },
+                "type": "object",
+                "required": [
+                  "match",
+                  "prizePerWinner",
+                  "totalWinners",
+                  "prizeFund"
+                ],
+                "title": "NumbersMatched",
+                "description": "Statistic Numbers Matched"
+              },
+              "type": "array",
+              "title": "Numbersmatched"
+            }
+          },
+          "type": "object",
+          "required": [
+            "summary",
+            "numbersMatched"
+          ],
+          "title": "DetailBreakDown",
+          "description": "Model represent main breakdown for daily grand"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "type": "object",
+  "required": [
+    "mainBreakdown",
+    "bonusesBreakdown"
+  ],
+  "title": "PrizeBreakdown",
+  "description": "Model represent prize breakdown for daily grand"
+}
+-- 404 --
+Not Found
+-- 422 --
+{
+  "properties": {
+    "detail": {
+      "items": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      },
+      "type": "array",
+      "title": "Detail"
+    }
+  },
+  "type": "object",
+  "title": "HTTPValidationError"
+}
+-- 500 --
+Internal server error
