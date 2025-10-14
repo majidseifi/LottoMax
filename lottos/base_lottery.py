@@ -4,6 +4,7 @@ import logging
 from datetime import datetime
 from collections import Counter
 from dateutil.parser import parse as parse_date
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from .api_client import CanadaLotteryAPI
 
 class BaseLottery(ABC):
@@ -74,30 +75,52 @@ class BaseLottery(ABC):
         """Return tuple of (start_year, end_year) for this lottery"""
         pass
     
-    def fetch_from_api(self):
-        """Fetch all historical draw data from API"""
+    def fetch_from_api(self, max_workers=10):
+        """Fetch all historical draw data from API (PARALLEL)"""
         self.log_message(f"🌐 Fetching {self.name} draw history from API...")
 
         try:
             start_year, end_year = self.get_year_range()
             lottery_type = self.get_api_lottery_type()
+            years_to_fetch = list(range(start_year, end_year + 1))
 
+            # PARALLEL: Fetch all years concurrently
+            self.log_message(f"🚀 Fetching {len(years_to_fetch)} years in parallel (max {max_workers} concurrent)...")
             all_draws = []
-            for year in range(start_year, end_year + 1):
-                self.log_message(f"📅 Fetching data for {year}...")
-                year_draws = self.api_client.fetch_draws_for_year(lottery_type, year)
 
-                if year_draws:
-                    for draw in year_draws:
-                        parsed_draw = self.parse_api_draw(draw)
-                        if parsed_draw:
-                            all_draws.append(parsed_draw)
+            def fetch_and_parse_year(year):
+                """Fetch and parse draws for a single year"""
+                try:
+                    year_draws = self.api_client.fetch_draws_for_year(lottery_type, year)
+                    if year_draws:
+                        parsed = []
+                        for draw in year_draws:
+                            parsed_draw = self.parse_api_draw(draw)
+                            if parsed_draw:
+                                parsed.append(parsed_draw)
+                        return (year, parsed, None)
+                    return (year, [], None)
+                except Exception as e:
+                    return (year, [], str(e))
+
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                futures = {executor.submit(fetch_and_parse_year, year): year for year in years_to_fetch}
+
+                completed = 0
+                for future in as_completed(futures):
+                    year, draws, error = future.result()
+                    completed += 1
+                    if error:
+                        self.log_message(f"⚠️ Error fetching {year}: {error}")
+                    else:
+                        all_draws.extend(draws)
+                        self.log_message(f"✅ {year}: {len(draws)} draws ({completed}/{len(years_to_fetch)})")
 
             if all_draws:
                 # Sort by date (newest first)
                 all_draws.sort(key=lambda x: parse_date(x[0]), reverse=True)
                 self._save_draws_to_file(all_draws)
-                self.log_message(f"✅ {self.past_numbers_file} updated with full draw history! 🎯")
+                self.log_message(f"✅ {self.past_numbers_file} updated with {len(all_draws)} draws! 🎯")
 
                 # Auto-regenerate statistics
                 self.log_message("📊 Regenerating statistics...")
@@ -191,13 +214,61 @@ class BaseLottery(ABC):
 
         return local_draws_per_year
 
-    def check_for_missing_years(self, quick_check=False, progress_callback=None):
+    def _fetch_year_count_parallel(self, years_to_check, progress_callback=None, max_workers=10):
         """
-        Check for gaps in historical data by comparing draw counts with API
+        Fetch draw counts for multiple years in parallel using ThreadPoolExecutor
+
+        Args:
+            years_to_check: List of years to fetch
+            progress_callback: Optional callback for progress updates
+            max_workers: Maximum number of concurrent API requests (default: 10)
+
+        Returns:
+            Dictionary mapping year to draw count from API
+        """
+        lottery_type = self.get_api_lottery_type()
+        api_counts = {}
+        completed = 0
+        total = len(years_to_check)
+
+        def fetch_single_year(year):
+            """Fetch draws for a single year"""
+            try:
+                draws = self.api_client.fetch_draws_for_year(lottery_type, year)
+                count = len(draws) if draws else 0
+                return (year, count, None)
+            except Exception as e:
+                return (year, 0, str(e))
+
+        # Use ThreadPoolExecutor for parallel API calls
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # Submit all tasks
+            future_to_year = {executor.submit(fetch_single_year, year): year for year in years_to_check}
+
+            # Process completed futures as they finish
+            for future in as_completed(future_to_year):
+                year, count, error = future.result()
+                completed += 1
+
+                if error:
+                    self.log_message(f"⚠️ Error fetching {year}: {error}")
+                else:
+                    api_counts[year] = count
+
+                # Call progress callback
+                if progress_callback:
+                    progress_callback(year, completed, total)
+
+        return api_counts
+
+    def check_for_missing_years(self, quick_check=False, progress_callback=None, max_workers=10):
+        """
+        Check for gaps in historical data by comparing draw counts with API (PARALLEL)
 
         Args:
             quick_check: If True, only check last 3 years (faster)
-            progress_callback: Function to call with progress updates (year, total)
+            progress_callback: Function to call with progress updates (year, idx, total)
+            max_workers: Maximum concurrent API requests (default: 10)
 
         Returns:
             Dictionary mapping year to issue details, empty dict if complete
@@ -218,25 +289,16 @@ class BaseLottery(ABC):
                 start_year = max(start_year, end_year - 2)  # Last 3 years only
                 self.log_message(f"📋 Quick check mode: checking {start_year}-{end_year}")
 
-            lottery_type = self.get_api_lottery_type()
             years_to_check = list(range(start_year, end_year + 1))
-            total_years = len(years_to_check)
 
-            # OPTIMIZATION 3: Check each year against API with progress
+            # OPTIMIZATION 3: PARALLEL API FETCHING for all years
+            self.log_message(f"🚀 Fetching {len(years_to_check)} years in parallel (max {max_workers} concurrent)...")
+            api_counts = self._fetch_year_count_parallel(years_to_check, progress_callback, max_workers)
+
+            # Compare local vs API counts
             years_with_issues = {}
-
-            for idx, year in enumerate(years_to_check, 1):
-                # Progress callback for UI updates
-                if progress_callback:
-                    progress_callback(year, idx, total_years)
-
-                self.log_message(f"🔍 Checking {year}... ({idx}/{total_years})")
-
-                # Get API count for this year
-                api_draws = self.api_client.fetch_draws_for_year(lottery_type, year)
-                api_count = len(api_draws) if api_draws else 0
-
-                # Get local count for this year (O(1) lookup in dictionary)
+            for year in years_to_check:
+                api_count = api_counts.get(year, 0)
                 local_count = local_draws_per_year.get(year, 0)
 
                 # If counts don't match, we have missing or extra data
@@ -254,12 +316,13 @@ class BaseLottery(ABC):
             self.log_message(f"❌ Error checking for missing data: {e}")
             return {}
 
-    def fetch_missing_years(self, years_with_issues):
+    def fetch_missing_years(self, years_with_issues, max_workers=10):
         """
-        Refetch data for years with missing draws and replace local data
+        Refetch data for years with missing draws and replace local data (PARALLEL)
 
         Args:
             years_with_issues: Dictionary mapping year to issue details
+            max_workers: Maximum concurrent API requests (default: 10)
 
         Returns:
             Number of draws added
@@ -291,17 +354,35 @@ class BaseLottery(ABC):
                             except:
                                 continue
 
-            # Fetch fresh data for problematic years
+            # PARALLEL: Fetch fresh data for problematic years
+            self.log_message(f"🚀 Fetching {len(years_list)} years in parallel...")
             new_draws = []
-            for year in years_list:
-                self.log_message(f"📅 Refetching {year}...")
-                year_draws = self.api_client.fetch_draws_for_year(lottery_type, year)
 
-                if year_draws:
-                    for draw in year_draws:
-                        parsed_draw = self.parse_api_draw(draw)
-                        if parsed_draw:
-                            new_draws.append(parsed_draw)
+            def fetch_and_parse_year(year):
+                """Fetch and parse draws for a single year"""
+                try:
+                    year_draws = self.api_client.fetch_draws_for_year(lottery_type, year)
+                    if year_draws:
+                        parsed = []
+                        for draw in year_draws:
+                            parsed_draw = self.parse_api_draw(draw)
+                            if parsed_draw:
+                                parsed.append(parsed_draw)
+                        return (year, parsed, None)
+                    return (year, [], None)
+                except Exception as e:
+                    return (year, [], str(e))
+
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                futures = {executor.submit(fetch_and_parse_year, year): year for year in years_list}
+
+                for future in as_completed(futures):
+                    year, draws, error = future.result()
+                    if error:
+                        self.log_message(f"⚠️ Error fetching {year}: {error}")
+                    else:
+                        new_draws.extend(draws)
+                        self.log_message(f"✅ Fetched {len(draws)} draws for {year}")
 
             if not new_draws:
                 self.log_message("⚠️ No draws fetched from API")

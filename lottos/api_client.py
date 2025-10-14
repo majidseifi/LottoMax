@@ -5,6 +5,7 @@ Handles all API interactions with the Canada Lottery Results API
 
 import requests
 import time
+import threading
 from typing import List, Dict, Any, Optional
 
 class CanadaLotteryAPI:
@@ -23,6 +24,15 @@ class CanadaLotteryAPI:
         "daily-grand": "daily-grand"
     }
 
+    # Rate limiting: 50 requests per minute
+    RATE_LIMIT = 50  # requests
+    RATE_WINDOW = 60  # seconds
+    MIN_REQUEST_DELAY = (RATE_WINDOW / RATE_LIMIT) + 0.15  # 1.35 seconds (with safety margin)
+
+    # Class-level rate limiting (shared across all instances)
+    _last_request_time = 0
+    _rate_lock = threading.Lock()
+
     def __init__(self, timeout: int = 10, max_retries: int = 3):
         """
         Initialize API client
@@ -34,9 +44,30 @@ class CanadaLotteryAPI:
         self.timeout = timeout
         self.max_retries = max_retries
 
+    def _enforce_rate_limit(self):
+        """
+        Enforce rate limiting: max 50 requests per 60 seconds
+        Simple approach: ensure exactly MIN_REQUEST_DELAY (1.2s) between requests
+        Thread-safe with lock held during entire operation
+        """
+        with self._rate_lock:
+            current_time = time.time()
+
+            # Calculate time since last request
+            if self._last_request_time > 0:
+                time_since_last = current_time - self._last_request_time
+
+                # If not enough time has passed, wait
+                if time_since_last < self.MIN_REQUEST_DELAY:
+                    wait_time = self.MIN_REQUEST_DELAY - time_since_last
+                    time.sleep(wait_time)
+
+            # Update last request time
+            self._last_request_time = time.time()
+
     def _make_request(self, endpoint: str) -> Optional[Any]:
         """
-        Make an API request with retry logic
+        Make an API request with retry logic and rate limiting
 
         Args:
             endpoint: API endpoint path (e.g., "/lottomax/years")
@@ -44,6 +75,9 @@ class CanadaLotteryAPI:
         Returns:
             JSON response data or None on failure
         """
+        # Enforce rate limit before making request
+        self._enforce_rate_limit()
+
         url = f"{self.BASE_URL}{endpoint}"
 
         for attempt in range(self.max_retries):
