@@ -68,10 +68,9 @@ class LottoApp:
         print("="*50)
         print("1. 🎲 Generate Numbers")
         print("2. 📊 View Latest Draw")
-        print("3. 🔄 Scrape New Data")
-        print("4. 📈 View Statistics")
-        print("5. 🔄 Update Statistics")
-        print("6. ⚙️  Configure Strategy")
+        print("3. 📈 View Statistics")
+        print("4. 🔄 Update Statistics")
+        print("5. ⚙️  Configure Strategy")
         print("0. ⬅️  Back to Main Menu")
         print("="*50)
     
@@ -107,6 +106,8 @@ class LottoApp:
         print("="*50)
         debug_status = "ON" if self.debug_mode else "OFF"
         print(f"1. 🐛 Debug Mode: {debug_status}")
+        print("2. 🌐 Update Lottery Data from API")
+        print("3. 🔍 Check for Missing Data")
         print("0. ⬅️  Back to Main Menu")
         print("="*50)
     
@@ -159,19 +160,17 @@ class LottoApp:
         """Handle lottery-specific menu"""
         while True:
             self.show_lottery_menu(self.current_lottery.name)
-            choice = self.get_user_choice(6, allow_zero=True)
-            
+            choice = self.get_user_choice(5, allow_zero=True)
+
             if choice == 1:
                 self.handle_number_generation()
             elif choice == 2:
                 self.show_latest_draw()
             elif choice == 3:
-                self.scrape_new_data()
-            elif choice == 4:
                 self.show_statistics()
-            elif choice == 5:
+            elif choice == 4:
                 self.update_statistics()
-            elif choice == 6:
+            elif choice == 5:
                 self.configure_strategy()
             elif choice == 0:
                 self.current_lottery = None
@@ -271,22 +270,179 @@ class LottoApp:
         
         input("\nPress Enter to continue...")
     
-    def scrape_new_data(self):
-        """Scrape new lottery data"""
-        self.log_message("\n🔄 Checking for new data...")
-        try:
-            if self.current_lottery.should_fetch_data():
-                self.log_message("🚀 New data found! Scraping...")
-                self.current_lottery.scrape_draw_tables()
-                print("✅ Data updated successfully!")
+    def update_lottery_data_from_api(self):
+        """Check for new draws via API and prompt user for updates"""
+        print("\n" + "="*50)
+        print("🌐 Checking for new lottery data from API...")
+        print("="*50)
+
+        # Check all lotteries for new data
+        updates_available = {}
+        for key, lottery in self.lotteries.items():
+            try:
+                new_count = lottery.check_for_new_draws()
+                if new_count == -1:
+                    updates_available[lottery.name] = "initial"
+                    print(f"\n📁 {lottery.name}: No local data found (initial fetch needed)")
+                elif new_count > 0:
+                    updates_available[lottery.name] = new_count
+                    draw_word = "draw" if new_count == 1 else "draws"
+                    print(f"\n🎉 {lottery.name}: {new_count} new {draw_word} available")
+                else:
+                    print(f"\n✅ {lottery.name}: Up to date")
+            except Exception as e:
+                print(f"\n❌ {lottery.name}: Error checking for updates - {e}")
+
+        # If no updates available, exit
+        if not updates_available:
+            print("\n✨ All lotteries are up to date!")
+            input("\nPress Enter to continue...")
+            return
+
+        # Prompt for each lottery with updates
+        print("\n" + "="*50)
+        for lottery_name, update_info in updates_available.items():
+            if update_info == "initial":
+                prompt = f"📥 {lottery_name} has no local data. Would you like to fetch all historical data? (Y/N): "
             else:
-                self.log_message("😴 No new data available. Using cached data.")
-                print("✅ Data is up to date!")
-        except Exception as e:
-            print(f"❌ Error scraping data: {e}")
-        
+                draw_word = "draw" if update_info == 1 else "draws"
+                prompt = f"📥 There is/are {update_info} new {draw_word} for {lottery_name}, would you like to update? (Y/N): "
+
+            while True:
+                response = input(prompt).strip().upper()
+                if response in ['Y', 'N']:
+                    break
+                print("❌ Please enter Y or N")
+
+            if response == 'Y':
+                lottery = None
+                for key, lott in self.lotteries.items():
+                    if lott.name == lottery_name:
+                        lottery = lott
+                        break
+
+                if lottery:
+                    try:
+                        if update_info == "initial":
+                            print(f"\n🌐 Fetching all historical data for {lottery_name}...")
+                            lottery.fetch_from_api()
+                            print(f"✅ {lottery_name} data fetched and saved successfully!")
+                        else:
+                            print(f"\n🔄 Updating {lottery_name} with new draws...")
+                            added = lottery.update_from_api()
+                            print(f"✅ {lottery_name} updated with {added} new draw(s)!")
+                    except Exception as e:
+                        print(f"❌ Error updating {lottery_name}: {e}")
+            else:
+                print(f"⏭️  Skipping {lottery_name}")
+
+        print("\n" + "="*50)
+        print("✨ API update process completed!")
         input("\nPress Enter to continue...")
-    
+
+    def check_for_missing_data(self):
+        """Check all lotteries for missing data by comparing with API"""
+        print("\n" + "="*50)
+        print("🔍 Checking data integrity (comparing with API)...")
+        print("This may take a minute as we check each year...")
+        print("="*50)
+
+        # Check all lotteries for missing data
+        missing_data = {}
+        for key, lottery in self.lotteries.items():
+            try:
+                print(f"\n🔎 Checking {lottery.name}...")
+                years_with_issues = lottery.check_for_missing_years()
+
+                if years_with_issues:
+                    missing_data[lottery.name] = years_with_issues
+                    total_missing = sum(info['missing'] for info in years_with_issues.values())
+
+                    print(f"⚠️  {lottery.name}: Found issues in {len(years_with_issues)} year(s)")
+                    for year, info in sorted(years_with_issues.items()):
+                        status = "missing" if info['missing'] > 0 else "extra"
+                        count = abs(info['missing'])
+                        print(f"    • {year}: {count} {status} draw(s) (API: {info['api_count']}, Local: {info['local_count']})")
+                else:
+                    print(f"✅ {lottery.name}: Complete data (all draws match API)")
+            except Exception as e:
+                print(f"❌ {lottery.name}: Error checking - {e}")
+
+        # If no missing data, exit
+        if not missing_data:
+            print("\n✨ All lotteries have complete and accurate data!")
+            input("\nPress Enter to continue...")
+            return
+
+        # Offer to fix missing data
+        print("\n" + "="*50)
+        print("Would you like to refetch the data for years with issues?")
+        print("This will replace local data for those years with fresh API data.")
+        print("="*50)
+
+        for lottery_name, years_with_issues in missing_data.items():
+            years_list = sorted(years_with_issues.keys())
+            year_ranges = self._format_year_ranges(years_list)
+            total_missing = sum(info['missing'] for info in years_with_issues.values())
+
+            prompt = f"📥 Refetch data for {lottery_name} ({year_ranges})? (Y/N): "
+
+            while True:
+                response = input(prompt).strip().upper()
+                if response in ['Y', 'N']:
+                    break
+                print("❌ Please enter Y or N")
+
+            if response == 'Y':
+                lottery = None
+                for key, lott in self.lotteries.items():
+                    if lott.name == lottery_name:
+                        lottery = lott
+                        break
+
+                if lottery:
+                    try:
+                        print(f"\n🌐 Refetching data for {lottery_name}...")
+                        print(f"   Processing {len(years_with_issues)} year(s)...")
+                        added = lottery.fetch_missing_years(years_with_issues)
+                        print(f"✅ {lottery_name} data refreshed - fetched {added} draw(s)!")
+                    except Exception as e:
+                        print(f"❌ Error fetching data for {lottery_name}: {e}")
+            else:
+                print(f"⏭️  Skipping {lottery_name}")
+
+        print("\n" + "="*50)
+        print("✨ Data integrity check completed!")
+        input("\nPress Enter to continue...")
+
+    def _format_year_ranges(self, years):
+        """Format a list of years into readable ranges (e.g., '2010-2015, 2018, 2020-2023')"""
+        if not years:
+            return ""
+
+        ranges = []
+        start = years[0]
+        end = years[0]
+
+        for i in range(1, len(years)):
+            if years[i] == end + 1:
+                end = years[i]
+            else:
+                if start == end:
+                    ranges.append(str(start))
+                else:
+                    ranges.append(f"{start}-{end}")
+                start = years[i]
+                end = years[i]
+
+        # Add the last range
+        if start == end:
+            ranges.append(str(start))
+        else:
+            ranges.append(f"{start}-{end}")
+
+        return ", ".join(ranges)
+
     def show_statistics(self):
         """Show lottery statistics"""
         self.log_message("\n📈 Loading statistics...")
@@ -354,14 +510,18 @@ class LottoApp:
         """Handle system configuration menu"""
         while True:
             self.show_config_menu()
-            choice = self.get_user_choice(1, allow_zero=True)
-            
+            choice = self.get_user_choice(3, allow_zero=True)
+
             if choice == 1:
                 self.debug_mode = not self.debug_mode
                 self._update_lottery_debug_mode()  # Update all lottery instances
                 status = "ON" if self.debug_mode else "OFF"
                 print(f"✅ Debug mode toggled {status}")
                 input("\nPress Enter to continue...")
+            elif choice == 2:
+                self.update_lottery_data_from_api()
+            elif choice == 3:
+                self.check_for_missing_data()
             elif choice == 0:
                 return
     

@@ -28,13 +28,19 @@ This launches an interactive CLI menu system where users can:
 
 **Base Class Pattern (`lottos/base_lottery.py`):**
 - `BaseLottery` is the abstract base class for all lottery implementations
-- Defines common functionality: scraping, statistics generation, file I/O, logging
-- Each lottery inherits and implements: `get_game_config()`, `get_scraping_urls()`, `parse_draw_row()`, `should_fetch_data()`, `_scrape_all_years()`
+- Defines common functionality: API fetching, statistics generation, file I/O, logging
+- Each lottery inherits and implements: `get_game_config()`, `get_api_lottery_type()`, `parse_api_draw()`, `get_year_range()`
+- Key methods: `fetch_from_api()`, `check_for_new_draws()`, `update_from_api()`, `check_for_missing_years()`, `fetch_missing_years()`, `generate_statistics_from_past_numbers()`
 
 **Lottery Implementations:**
-- `lottos/lotto_max.py` - 7 main numbers (1-50) + 1 bonus (1-50)
-- `lottos/lotto_649.py` - 6 main numbers (1-49) + 1 bonus (1-49)
-- `lottos/daily_grand.py` - 5 main numbers (1-49) + 1 Grand Number (1-7)
+- `lottos/lotto_max.py` - 7 main numbers (1-50) + 1 bonus (1-50) - Started 2009
+- `lottos/lotto_649.py` - 6 main numbers (1-49) + 1 bonus (1-49) - Started 1982
+- `lottos/daily_grand.py` - 5 main numbers (1-49) + 1 Grand Number (1-7) - Started 2016
+
+Each lottery implements:
+- `get_api_lottery_type()` - Returns API endpoint identifier
+- `parse_api_draw()` - Converts API JSON to internal format
+- `get_year_range()` - Returns (start_year, current_year) tuple
 
 **Strategy Pattern (`lottos/strategies/base_strategy.py`):**
 - `BaseStrategy` abstract class for number generation algorithms
@@ -62,11 +68,12 @@ Each lottery has its own data directory (`data/{lottery_name}/`):
 
 ### Data Flow
 
-1. **Data Check:** `should_fetch_data()` compares local cached data with latest online draw
-2. **Scraping:** Web scraping from lottery websites (BeautifulSoup + requests)
-3. **Statistics Generation:** `generate_statistics_from_past_numbers()` analyzes all historical data
-4. **Loading:** `load_from_files()` reads statistics and latest draw
-5. **Number Generation:** Strategy uses loaded statistics to generate predictions
+1. **Manual Update Check:** User selects "Update Lottery Data from API" in Settings
+2. **API Check:** `check_for_new_draws()` compares local latest date with API latest date
+3. **API Fetch:** `update_from_api()` or `fetch_from_api()` retrieves draw data from Canada Lottery API
+4. **Statistics Generation:** `generate_statistics_from_past_numbers()` analyzes all historical data (auto-triggered after API update)
+5. **Loading:** `load_from_files()` reads statistics and latest draw from local cache
+6. **Number Generation:** Strategy uses loaded statistics to generate predictions
 
 ### Logging System
 
@@ -75,13 +82,44 @@ Each lottery has its own data directory (`data/{lottery_name}/`):
 - No console spam in normal mode; full logging in debug mode
 - Set via System Config menu in CLI
 
-## Web Scraping Sources
+### Data Integrity
 
-- **Lotto Max:** https://www.lottomaxnumbers.com/numbers/{year} (2009-2025)
-- **Lotto 6/49:** https://ca.lottonumbers.com/lotto-649/numbers/{year} (1982-2025)
-- **Daily Grand:** https://ca.lottonumbers.com/daily-grand/numbers/{year} (2016-2025)
+**Missing Data Detection:**
+- `check_for_missing_years()` scans `past_numbers.txt` and identifies gaps
+- Compares present years against expected range (lottery start year to current year)
+- Returns list of missing years
 
-All scraping uses BeautifulSoup to parse HTML tables with lottery draw results.
+**Missing Data Repair:**
+- `fetch_missing_years(years)` fetches specific years from API
+- Merges new data with existing data
+- Removes duplicates (keeps first occurrence by date)
+- Sorts chronologically (newest first)
+- Auto-regenerates statistics after merge
+
+## API Integration
+
+The application uses the **Canada Lottery Results API** (RapidAPI) to fetch draw data:
+
+**API Endpoints:**
+- **Lotto Max:** `GET /lottomax/years/{year}` (2009-present)
+- **Lotto 6/49:** `GET /6-49/years/{year}` (1982-present)
+- **Daily Grand:** `GET /daily-grand/years/{year}` (2016-present)
+
+**API Client:** `lottos/api_client.py` - `CanadaLotteryAPI` class handles all API interactions with retry logic and error handling.
+
+**Update Process:**
+1. User selects "Update Lottery Data from API" in System Config menu
+2. System checks all 3 lotteries for new draws (compares local vs API)
+3. User prompted per lottery: "There is/are {count} new draw(s) for {name}, would you like to update? (Y/N)"
+4. If Yes: fetches new data, updates `past_numbers.txt`, auto-regenerates statistics
+5. Normal operation uses cached local files (no API calls)
+
+**Data Integrity Check:**
+1. User selects "Check for Missing Data" in System Config menu
+2. System scans all lotteries for gaps in historical data (missing years)
+3. Reports missing year ranges (e.g., "2010-2023")
+4. User prompted per lottery to fetch missing data
+5. If Yes: fetches all missing years, merges with existing data, removes duplicates, auto-regenerates statistics
 
 ## Testing Files
 
@@ -116,18 +154,56 @@ Note: Test files matching `test_*.py` are gitignored but exist in the working di
 ## Dependencies
 
 Based on imports used throughout codebase:
-- `requests` - HTTP requests for web scraping
-- `beautifulsoup4` - HTML parsing
-- `python-dateutil` - Flexible date parsing
-- Standard library: `os`, `logging`, `collections`, `abc`, `random`, `datetime`, `typing`
+- `requests` - HTTP requests for API calls
+- `python-dateutil` - Flexible date parsing and formatting
+- Standard library: `os`, `logging`, `collections`, `abc`, `random`, `datetime`, `typing`, `time`
+
+## API Response Formats
+
+**Lotto Max** (`/lottomax/years/{year}`):
+```json
+{
+  "date": "2024-01-01",
+  "prize": 10000000,
+  "numbers": [1, 2, 3, 4, 5, 6, 7],
+  "bonus": 8
+}
+```
+
+**Lotto 6/49** (`/6-49/years/{year}`):
+```json
+{
+  "date": "2024-01-01",
+  "classic": {
+    "numbers": [1, 2, 3, 4, 5, 6],
+    "bonus": 7,
+    "prize": 5000000
+  },
+  "guaranteed": [...],  // Ignored
+  "goldBall": {...}     // Ignored
+}
+```
+
+**Daily Grand** (`/daily-grand/years/{year}`):
+```json
+{
+  "date": "2024-01-01",
+  "numbers": [1, 2, 3, 4, 5],
+  "grandNumber": 6,
+  "prize": 1000,
+  "bonusesDraw": [...]  // Ignored
+}
+```
 
 ## Adding New Lotteries
 
 1. Create new class in `lottos/` inheriting from `BaseLottery`
-2. Implement required abstract methods
-3. Define game configuration (number counts and ranges)
-4. Add scraping URLs and row parser for specific website format
-5. Register in `LottoApp.__init__()` in `lotto.py`
+2. Implement required abstract methods:
+   - `get_game_config()` - Define number counts and ranges
+   - `get_api_lottery_type()` - Return API endpoint identifier
+   - `parse_api_draw()` - Convert API JSON to (date, numbers, jackpot) tuple
+   - `get_year_range()` - Return (start_year, current_year) tuple
+3. Register in `LottoApp.__init__()` in `lotto.py`
 
 ## Adding New Strategies
 
