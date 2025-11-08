@@ -6,16 +6,37 @@ Handles all API interactions with the Canada Lottery Results API
 import requests
 import time
 import threading
+import os
 from typing import List, Dict, Any, Optional
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 class CanadaLotteryAPI:
     """Client for interacting with Canada Lottery Results API"""
 
     BASE_URL = "https://canada-lottery.p.rapidapi.com"
-    HEADERS = {
-        "x-rapidapi-key": "***REMOVED***",
-        "x-rapidapi-host": "canada-lottery.p.rapidapi.com"
-    }
+
+    @staticmethod
+    def _get_headers() -> Dict[str, str]:
+        """Get API headers with key from environment variables"""
+        api_key = os.getenv('RAPIDAPI_KEY')
+        api_host = os.getenv('RAPIDAPI_HOST', 'canada-lottery.p.rapidapi.com')
+
+        if not api_key:
+            raise ValueError(
+                "RAPIDAPI_KEY not found in environment variables.\n"
+                "Please create a .env file with your RapidAPI key.\n"
+                "See .env.example for template."
+            )
+
+        return {
+            "x-rapidapi-key": api_key,
+            "x-rapidapi-host": api_host
+        }
+
+    HEADERS = _get_headers.__func__()
 
     # API endpoint mappings
     LOTTERY_ENDPOINTS = {

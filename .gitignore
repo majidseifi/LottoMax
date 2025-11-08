@@ -48,3 +48,17 @@ Thumbs.db
 *.temp
 test_*.py
 *.txt
+
+# Environment variables and secrets
+.env
+.env.local
+*.env
+
+# Credentials and API keys
+credentials/
+config/
+scripts/
+
+# Sensitive configuration files
+*_config.json
+api_keys.py
