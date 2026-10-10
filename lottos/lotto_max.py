@@ -12,9 +12,9 @@ class LottoMax(BaseLottery):
         """Return Lotto Max game configuration"""
         return {
             'main_count': 7,           # 7 main numbers
-            'main_range': (1, 50),     # Numbers from 1 to 50
+            'main_range': (1, 52),     # Numbers from 1 to 52 (7/52 matrix since Apr 14, 2026)
             'bonus_count': 1,          # 1 bonus number
-            'bonus_range': (1, 50),    # Bonus from same range
+            'bonus_range': (1, 52),    # Bonus from same range
         }
 
     def get_api_lottery_type(self):
@@ -47,7 +47,10 @@ class LottoMax(BaseLottery):
             formatted_date = date_obj.strftime('%-m/%-d/%Y')
 
             # Format numbers: 7 main + 1 bonus
-            main_numbers = draw_data['numbers']
+            # Note: the live API includes the bonus as the 8th element of
+            # `numbers`, so slice to the 7 main numbers to avoid duplicating
+            # the bonus (works whether or not `numbers` already includes it).
+            main_numbers = draw_data['numbers'][:7]
             bonus = draw_data['bonus']
             formatted_numbers = '-'.join(map(str, main_numbers)) + f'-{bonus}'
 

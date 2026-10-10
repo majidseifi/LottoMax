@@ -7,5 +7,5 @@ DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 # Change to that directory
 cd "$DIR"
 
-# Launch the GUI application
-python3 lotto_gui.py
+# Launch the GUI application using the venv Python
+"$DIR/.venv/bin/python" lotto_gui.py

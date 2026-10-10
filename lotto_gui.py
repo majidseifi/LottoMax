@@ -10,15 +10,13 @@ from typing import Optional, List, Tuple
 
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QTabWidget, QPushButton, QLabel, QComboBox, QSpinBox, QGroupBox,
+    QTabWidget, QPushButton, QLabel, QComboBox, QSpinBox, QFrame,
     QScrollArea, QGridLayout, QMessageBox, QDialog, QProgressBar,
-    QRadioButton, QButtonGroup, QSizePolicy, QFrame, QCheckBox
+    QSizePolicy, QStackedWidget, QToolButton
 )
-from PyQt6.QtCore import Qt, QThread, pyqtSignal, QPropertyAnimation, QEasingCurve, QTimer
-from PyQt6.QtGui import QFont, QPalette, QColor, QAction
-from PyQt6.QtCharts import QChart, QChartView, QBarSeries, QBarSet, QBarCategoryAxis, QValueAxis
+from PyQt6.QtCore import Qt, QSize
+from PyQt6.QtGui import QFont, QAction, QFontDatabase
 
-# Add current directory to path for imports
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from lottos.lotto_max import LottoMax
@@ -27,954 +25,903 @@ from lottos.daily_grand import DailyGrand
 from lottos.strategies.base_strategy import StrategyManager
 
 
-class NumberBallWidget(QLabel):
-    """Custom widget to display a lottery number as a colored ball"""
+# ────────────────────────────────────────────────────────────────────
+# Design tokens
+# ────────────────────────────────────────────────────────────────────
+class Theme:
+    BG = "#0d1117"
+    SURFACE = "#161b22"
+    SURFACE_2 = "#1c2128"
+    BORDER = "#30363d"
+    BORDER_SOFT = "#21262d"
+    TEXT = "#e6edf3"
+    TEXT_DIM = "#8b949e"
+    TEXT_MUTED = "#6e7681"
+    ACCENT = "#6366f1"
+    ACCENT_HOVER = "#7c7ff2"
+    ACCENT_PRESSED = "#4f52d8"
+    SUCCESS = "#3fb950"
+    BONUS = "#f0b429"
+    DANGER = "#f85149"
 
-    def __init__(self, number: int, is_bonus: bool = False, parent=None):
+    # Number ball palette — single subtle hue, accent border on bonus
+    BALL_BG = "#1f242c"
+    BALL_BORDER = "#3a4150"
+    BALL_TEXT = "#e6edf3"
+
+
+# ────────────────────────────────────────────────────────────────────
+# Reusable widgets
+# ────────────────────────────────────────────────────────────────────
+class NumberBall(QLabel):
+    """Flat number ball — dark surface, accent border for bonus."""
+
+    def __init__(self, number: int, is_bonus: bool = False, size: int = 44, parent=None):
         super().__init__(str(number), parent)
         self.number = number
         self.is_bonus = is_bonus
-        self.setup_style()
+        self._size = size
+        self._apply_style()
 
-    def setup_style(self):
-        """Setup the visual style of the ball"""
+    def _apply_style(self):
+        radius = self._size // 2
+        font_size = max(13, int(self._size * 0.38))
         if self.is_bonus:
-            bg_color = "#FFD700"  # Gold for bonus
-            text_color = "#000000"
+            border = Theme.BONUS
+            text = Theme.BONUS
+            bg = Theme.SURFACE_2
+            border_width = 2
         else:
-            # Color gradient based on number value
-            if self.number <= 10:
-                bg_color = "#FF6B6B"  # Red
-            elif self.number <= 20:
-                bg_color = "#4ECDC4"  # Teal
-            elif self.number <= 30:
-                bg_color = "#45B7D1"  # Blue
-            elif self.number <= 40:
-                bg_color = "#96CEB4"  # Green
-            else:
-                bg_color = "#DDA15E"  # Orange
-            text_color = "#FFFFFF"
+            border = Theme.BALL_BORDER
+            text = Theme.BALL_TEXT
+            bg = Theme.BALL_BG
+            border_width = 1
 
+        self.setFixedSize(self._size, self._size)
         self.setStyleSheet(f"""
             QLabel {{
-                background-color: {bg_color};
-                color: {text_color};
-                border-radius: 30px;
-                font-size: 24px;
-                font-weight: bold;
-                min-width: 60px;
-                max-width: 60px;
-                min-height: 60px;
-                max-height: 60px;
-                qproperty-alignment: AlignCenter;
+                background-color: {bg};
+                color: {text};
+                border: {border_width}px solid {border};
+                border-radius: {radius}px;
+                font-size: {font_size}px;
+                font-weight: 600;
             }}
         """)
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
 
-class APIWorker(QThread):
-    """Background worker for API operations"""
-    progress = pyqtSignal(str)
-    finished = pyqtSignal(bool, str)
+class Card(QFrame):
+    """Surface card with title + content."""
 
-    def __init__(self, operation, lottery, *args):
-        super().__init__()
-        self.operation = operation
-        self.lottery = lottery
-        self.args = args
+    def __init__(self, title: str = "", parent=None):
+        super().__init__(parent)
+        self.setObjectName("Card")
+        self.setStyleSheet(f"""
+            QFrame#Card {{
+                background-color: {Theme.SURFACE};
+                border: 1px solid {Theme.BORDER};
+                border-radius: 12px;
+            }}
+        """)
 
-    def run(self):
-        try:
-            if self.operation == "check_new":
-                count = self.lottery.check_for_new_draws()
-                self.finished.emit(True, str(count))
-            elif self.operation == "update":
-                added = self.lottery.update_from_api()
-                self.finished.emit(True, f"Added {added} new draw(s)")
-            elif self.operation == "check_missing":
-                quick_check = self.args[0] if self.args else False
-                def progress_callback(year, idx, total):
-                    self.progress.emit(f"Checking {year} ({idx}/{total})")
+        self._outer = QVBoxLayout(self)
+        self._outer.setContentsMargins(20, 18, 20, 18)
+        self._outer.setSpacing(14)
 
-                missing = self.lottery.check_for_missing_years(
-                    quick_check=quick_check,
-                    progress_callback=progress_callback
-                )
-                self.finished.emit(True, f"Found {len(missing)} year(s) with issues")
-            elif self.operation == "fetch_missing":
-                years_dict = self.args[0]
-                added = self.lottery.fetch_missing_years(years_dict)
-                self.finished.emit(True, f"Fetched {added} draws")
-        except Exception as e:
-            self.finished.emit(False, str(e))
+        if title:
+            self._header_row = QHBoxLayout()
+            self._header_row.setSpacing(12)
+            self._title = QLabel(title)
+            self._title.setStyleSheet(
+                f"color: {Theme.TEXT_DIM}; font-size: 12px; font-weight: 600; "
+                f"letter-spacing: 1.2px; text-transform: uppercase;"
+            )
+            self._header_row.addWidget(self._title)
+            self._header_row.addStretch()
+            self._outer.addLayout(self._header_row)
+
+        self.body = QVBoxLayout()
+        self.body.setSpacing(12)
+        self._outer.addLayout(self.body)
+
+    def add_header_widget(self, w: QWidget):
+        """Add a widget to the right side of the card header."""
+        if hasattr(self, "_header_row"):
+            self._header_row.addWidget(w)
 
 
-class LotteryTabWidget(QWidget):
-    """Widget for a single lottery tab containing all lottery-specific UI"""
+def primary_button(text: str) -> QPushButton:
+    btn = QPushButton(text)
+    btn.setCursor(Qt.CursorShape.PointingHandCursor)
+    btn.setStyleSheet(f"""
+        QPushButton {{
+            background-color: {Theme.ACCENT};
+            color: white;
+            border: none;
+            border-radius: 8px;
+            padding: 12px 24px;
+            font-size: 14px;
+            font-weight: 600;
+        }}
+        QPushButton:hover {{ background-color: {Theme.ACCENT_HOVER}; }}
+        QPushButton:pressed {{ background-color: {Theme.ACCENT_PRESSED}; }}
+        QPushButton:disabled {{ background-color: {Theme.BORDER}; color: {Theme.TEXT_MUTED}; }}
+    """)
+    return btn
+
+
+def ghost_button(text: str) -> QPushButton:
+    btn = QPushButton(text)
+    btn.setCursor(Qt.CursorShape.PointingHandCursor)
+    btn.setStyleSheet(f"""
+        QPushButton {{
+            background-color: transparent;
+            color: {Theme.TEXT_DIM};
+            border: 1px solid {Theme.BORDER};
+            border-radius: 8px;
+            padding: 8px 16px;
+            font-size: 13px;
+            font-weight: 500;
+        }}
+        QPushButton:hover {{ color: {Theme.TEXT}; border-color: {Theme.TEXT_MUTED}; }}
+        QPushButton:pressed {{ background-color: {Theme.SURFACE_2}; }}
+    """)
+    return btn
+
+
+# ────────────────────────────────────────────────────────────────────
+# Lottery view
+# ────────────────────────────────────────────────────────────────────
+class LotteryView(QWidget):
+    """Single-view stack: Latest draw → Generator → Quick stats."""
 
     def __init__(self, lottery, strategy_manager, parent=None):
         super().__init__(parent)
         self.lottery = lottery
         self.strategy_manager = strategy_manager
         self.current_strategy = "frequency"
-        self.generated_numbers = []
-        self.setup_ui()
-        self.load_latest_draw()
+        self._build()
+        self.refresh()
 
-    def setup_ui(self):
-        """Setup the main layout for this lottery tab"""
-        main_layout = QHBoxLayout(self)
-        main_layout.setSpacing(20)
+    def _build(self):
+        root = QVBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(16)
 
-        # Left Panel - Dashboard
-        left_panel = self.create_dashboard_panel()
-        main_layout.addWidget(left_panel, stretch=1)
+        root.addWidget(self._build_latest_card())
+        root.addWidget(self._build_generate_card())
+        root.addWidget(self._build_stats_card())
+        root.addStretch()
 
-        # Center Panel - Number Generation
-        center_panel = self.create_generation_panel()
-        main_layout.addWidget(center_panel, stretch=2)
+    # — Latest draw card —
+    def _build_latest_card(self) -> Card:
+        card = Card("Latest Draw")
 
-        # Right Panel - Statistics
-        right_panel = self.create_statistics_panel()
-        main_layout.addWidget(right_panel, stretch=1)
+        self.date_label = QLabel("—")
+        self.date_label.setStyleSheet(f"color: {Theme.TEXT}; font-size: 14px;")
+        card.add_header_widget(self.date_label)
 
-    def create_dashboard_panel(self) -> QWidget:
-        """Create the dashboard panel showing latest draw info"""
-        panel = QGroupBox("Latest Draw")
-        layout = QVBoxLayout(panel)
-        layout.setSpacing(15)
+        # Numbers row
+        self.latest_row = QHBoxLayout()
+        self.latest_row.setSpacing(8)
+        self.latest_row.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        wrap = QWidget()
+        wrap.setLayout(self.latest_row)
+        card.body.addWidget(wrap)
 
-        # Title
-        title = QLabel(f"🎰 {self.lottery.name}")
-        title.setFont(QFont("Arial", 18, QFont.Weight.Bold))
-        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(title)
+        # Footer: bonus label + jackpot
+        footer = QHBoxLayout()
+        footer.setSpacing(24)
 
-        # Draw date
-        self.date_label = QLabel("Loading...")
-        self.date_label.setFont(QFont("Arial", 12))
-        self.date_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(self.date_label)
+        self.bonus_label = QLabel("")
+        self.bonus_label.setStyleSheet(f"color: {Theme.TEXT_DIM}; font-size: 12px;")
+        footer.addWidget(self.bonus_label)
 
-        # Numbers display
-        self.latest_numbers_container = QWidget()
-        self.latest_numbers_layout = QHBoxLayout(self.latest_numbers_container)
-        self.latest_numbers_layout.setSpacing(10)
-        layout.addWidget(self.latest_numbers_container)
+        footer.addStretch()
 
-        # Jackpot
-        jackpot_label = QLabel("Jackpot")
-        jackpot_label.setFont(QFont("Arial", 11))
-        jackpot_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        jackpot_label.setStyleSheet("color: #666;")
-        layout.addWidget(jackpot_label)
+        jackpot_caption = QLabel("Jackpot")
+        jackpot_caption.setStyleSheet(
+            f"color: {Theme.TEXT_MUTED}; font-size: 11px; "
+            f"letter-spacing: 1px; text-transform: uppercase;"
+        )
+        footer.addWidget(jackpot_caption)
 
-        self.jackpot_label = QLabel("$0")
-        self.jackpot_label.setFont(QFont("Arial", 24, QFont.Weight.Bold))
-        self.jackpot_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.jackpot_label.setStyleSheet("color: #2ECC71;")
-        layout.addWidget(self.jackpot_label)
+        self.jackpot_label = QLabel("—")
+        self.jackpot_label.setStyleSheet(
+            f"color: {Theme.SUCCESS}; font-size: 18px; font-weight: 700;"
+        )
+        footer.addWidget(self.jackpot_label)
 
-        # Refresh button
-        refresh_btn = QPushButton("🔄 Refresh")
-        refresh_btn.clicked.connect(self.load_latest_draw)
-        refresh_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #3498DB;
-                color: white;
-                border: none;
-                border-radius: 5px;
-                padding: 10px;
-                font-size: 14px;
-            }
-            QPushButton:hover {
-                background-color: #2980B9;
-            }
-        """)
-        layout.addWidget(refresh_btn)
+        card.body.addLayout(footer)
+        return card
 
-        layout.addStretch()
+    # — Generator card —
+    def _build_generate_card(self) -> Card:
+        card = Card("Generate")
 
-        return panel
+        # Controls row
+        controls = QHBoxLayout()
+        controls.setSpacing(12)
 
-    def create_generation_panel(self) -> QWidget:
-        """Create the number generation panel"""
-        panel = QGroupBox("Generate Numbers")
-        layout = QVBoxLayout(panel)
-        layout.setSpacing(20)
-
-        # Strategy selection
-        strategy_group = QWidget()
-        strategy_layout = QHBoxLayout(strategy_group)
-        strategy_layout.addWidget(QLabel("Strategy:"))
+        strat_label = QLabel("Strategy")
+        strat_label.setStyleSheet(f"color: {Theme.TEXT_DIM}; font-size: 12px;")
+        controls.addWidget(strat_label)
 
         self.strategy_combo = QComboBox()
-        self.strategy_combo.addItems([
-            "Frequency (Hot/Cold Numbers)",
-            "Random",
-            "Balanced (Mixed Approach)"
-        ])
-        self.strategy_combo.currentIndexChanged.connect(self.on_strategy_changed)
-        strategy_layout.addWidget(self.strategy_combo, stretch=1)
-        layout.addWidget(strategy_group)
+        self.strategy_combo.addItems(["Frequency", "Random", "Balanced"])
+        self.strategy_combo.currentIndexChanged.connect(self._on_strategy_changed)
+        self.strategy_combo.setMinimumWidth(160)
+        controls.addWidget(self.strategy_combo)
 
-        # Generate single button
-        generate_btn = QPushButton("🎲 Generate Numbers")
-        generate_btn.clicked.connect(self.generate_single)
-        generate_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #9B59B6;
-                color: white;
-                border: none;
-                border-radius: 10px;
-                padding: 20px;
-                font-size: 18px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #8E44AD;
-            }
-            QPushButton:pressed {
-                background-color: #7D3C98;
-            }
-        """)
-        layout.addWidget(generate_btn)
+        controls.addSpacing(20)
 
-        # Generated numbers display
-        self.generated_container = QWidget()
-        self.generated_layout = QGridLayout(self.generated_container)
-        self.generated_layout.setSpacing(15)
-        layout.addWidget(self.generated_container)
-
-        # Multiple generation section
-        multi_group = QWidget()
-        multi_layout = QHBoxLayout(multi_group)
-        multi_layout.addWidget(QLabel("Generate:"))
+        sets_label = QLabel("Sets")
+        sets_label.setStyleSheet(f"color: {Theme.TEXT_DIM}; font-size: 12px;")
+        controls.addWidget(sets_label)
 
         self.count_spin = QSpinBox()
-        self.count_spin.setRange(2, 10)
-        self.count_spin.setValue(5)
-        self.count_spin.setSuffix(" sets")
-        multi_layout.addWidget(self.count_spin)
+        self.count_spin.setRange(1, 10)
+        self.count_spin.setValue(1)
+        self.count_spin.setFixedWidth(70)
+        controls.addWidget(self.count_spin)
 
-        multi_btn = QPushButton("Generate Multiple")
-        multi_btn.clicked.connect(self.generate_multiple)
-        multi_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #E74C3C;
-                color: white;
-                border: none;
-                border-radius: 5px;
-                padding: 10px 20px;
-                font-size: 14px;
-            }
-            QPushButton:hover {
-                background-color: #C0392B;
-            }
-        """)
-        multi_layout.addWidget(multi_btn)
-        layout.addWidget(multi_group)
+        controls.addStretch()
 
-        # Multiple results display (scrollable)
-        self.multi_scroll = QScrollArea()
-        self.multi_scroll.setWidgetResizable(True)
-        self.multi_scroll.setMaximumHeight(200)
-        self.multi_results = QLabel()
-        self.multi_results.setWordWrap(True)
-        self.multi_results.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
-        self.multi_scroll.setWidget(self.multi_results)
-        layout.addWidget(self.multi_scroll)
+        gen_btn = primary_button("Generate")
+        gen_btn.clicked.connect(self._on_generate)
+        controls.addWidget(gen_btn)
 
+        card.body.addLayout(controls)
+
+        # Results container
+        self.results_container = QVBoxLayout()
+        self.results_container.setSpacing(10)
+        results_wrap = QWidget()
+        results_wrap.setLayout(self.results_container)
+        card.body.addWidget(results_wrap)
+
+        self._set_results_placeholder()
+        return card
+
+    def _set_results_placeholder(self):
+        self._clear_layout(self.results_container)
+        hint = QLabel("Press Generate to see your numbers.")
+        hint.setStyleSheet(f"color: {Theme.TEXT_MUTED}; font-size: 13px; padding: 20px 0;")
+        hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.results_container.addWidget(hint)
+
+    # — Stats card —
+    def _build_stats_card(self) -> Card:
+        card = Card("Quick Stats")
+
+        full_btn = ghost_button("Full Statistics")
+        full_btn.clicked.connect(self._show_statistics)
+        card.add_header_widget(full_btn)
+
+        self.hot_row = self._stat_row("Hot")
+        self.cold_row = self._stat_row("Cold")
+        card.body.addLayout(self.hot_row["layout"])
+        card.body.addLayout(self.cold_row["layout"])
+
+        return card
+
+    def _stat_row(self, label_text: str) -> dict:
+        layout = QHBoxLayout()
+        layout.setSpacing(12)
+        label = QLabel(label_text)
+        label.setStyleSheet(
+            f"color: {Theme.TEXT_DIM}; font-size: 11px; font-weight: 600; "
+            f"letter-spacing: 1px; text-transform: uppercase;"
+        )
+        label.setFixedWidth(48)
+        layout.addWidget(label)
+
+        values = QLabel("—")
+        values.setStyleSheet(f"color: {Theme.TEXT}; font-size: 14px; font-weight: 500;")
+        layout.addWidget(values)
         layout.addStretch()
+        return {"layout": layout, "values": values}
 
-        return panel
+    # — Helpers —
+    def _clear_layout(self, layout):
+        while layout.count():
+            item = layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+            elif item.layout():
+                self._clear_layout(item.layout())
 
-    def create_statistics_panel(self) -> QWidget:
-        """Create the statistics panel with charts"""
-        panel = QGroupBox("Statistics")
-        layout = QVBoxLayout(panel)
+    def _on_strategy_changed(self, index: int):
+        self.current_strategy = ["frequency", "random", "balanced"][index]
 
-        # View stats button
-        view_stats_btn = QPushButton("📊 View Detailed Statistics")
-        view_stats_btn.clicked.connect(self.show_statistics)
-        view_stats_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #16A085;
-                color: white;
-                border: none;
-                border-radius: 5px;
-                padding: 10px;
-                font-size: 14px;
-            }
-            QPushButton:hover {
-                background-color: #138D75;
-            }
-        """)
-        layout.addWidget(view_stats_btn)
+    # — Data load —
+    def refresh(self):
+        self._load_latest()
+        self._load_quick_stats()
 
-        # Quick stats preview
-        self.stats_preview = QLabel("Loading statistics...")
-        self.stats_preview.setWordWrap(True)
-        self.stats_preview.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
-        self.stats_preview.setStyleSheet("""
-            QLabel {
-                background-color: #F8F9FA;
-                border-radius: 5px;
-                padding: 15px;
-                font-family: monospace;
-                font-size: 11px;
-            }
-        """)
-
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setWidget(self.stats_preview)
-        layout.addWidget(scroll)
-
-        # Load stats preview
-        self.load_stats_preview()
-
-        return panel
-
-    def on_strategy_changed(self, index: int):
-        """Handle strategy selection change"""
-        strategies = ["frequency", "random", "balanced"]
-        self.current_strategy = strategies[index]
-
-    def load_latest_draw(self):
-        """Load and display the latest draw information"""
+    def _load_latest(self):
         try:
             data = self.lottery.load_from_files()
-            latest = data.get('latest_draw', {})
+            latest = data.get("latest_draw") or {}
 
-            if latest:
-                # Update date
-                self.date_label.setText(f"Draw Date: {latest.get('date', 'Unknown')}")
+            self._clear_layout(self.latest_row)
 
-                # Update numbers display
-                # Clear existing balls
-                while self.latest_numbers_layout.count():
-                    child = self.latest_numbers_layout.takeAt(0)
-                    if child.widget():
-                        child.widget().deleteLater()
+            if not latest:
+                self.date_label.setText("No data")
+                self.bonus_label.setText("")
+                self.jackpot_label.setText("—")
+                placeholder = QLabel("Run an API update from Settings to load data.")
+                placeholder.setStyleSheet(f"color: {Theme.TEXT_MUTED}; font-size: 13px;")
+                self.latest_row.addWidget(placeholder)
+                return
 
-                # Add main numbers
-                numbers = latest.get('numbers', [])
-                for num in numbers:
-                    ball = NumberBallWidget(num, is_bonus=False)
-                    self.latest_numbers_layout.addWidget(ball)
+            self.date_label.setText(latest.get("date", "Unknown"))
 
-                # Add bonus if exists
-                if 'bonus' in latest:
-                    # Add separator
-                    sep = QLabel("|")
-                    sep.setFont(QFont("Arial", 24))
-                    sep.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                    self.latest_numbers_layout.addWidget(sep)
+            for n in latest.get("numbers", []):
+                self.latest_row.addWidget(NumberBall(n))
 
-                    ball = NumberBallWidget(latest['bonus'], is_bonus=True)
-                    self.latest_numbers_layout.addWidget(ball)
+            if "bonus" in latest:
+                spacer = QLabel("·")
+                spacer.setStyleSheet(f"color: {Theme.TEXT_MUTED}; font-size: 18px; padding: 0 4px;")
+                self.latest_row.addWidget(spacer)
+                self.latest_row.addWidget(NumberBall(latest["bonus"], is_bonus=True))
+                self.bonus_label.setText("● Bonus")
+                self.bonus_label.setStyleSheet(
+                    f"color: {Theme.BONUS}; font-size: 12px; font-weight: 500;"
+                )
+            else:
+                self.bonus_label.setText("")
 
-                self.latest_numbers_layout.addStretch()
-
-                # Update jackpot
-                jackpot = latest.get('jackpot', '$0')
-                self.jackpot_label.setText(jackpot)
+            self.latest_row.addStretch()
+            self.jackpot_label.setText(latest.get("jackpot", "—"))
         except Exception as e:
-            self.date_label.setText(f"Error loading: {str(e)}")
+            self.date_label.setText(f"Error: {e}")
 
-    def load_stats_preview(self):
-        """Load and display statistics preview"""
+    def _load_quick_stats(self):
         try:
             data = self.lottery.load_from_files()
+            freq = data.get("main_freq")
+            if not freq:
+                self.hot_row["values"].setText("—")
+                self.cold_row["values"].setText("—")
+                return
 
-            # Get hot numbers
-            if data.get('main_freq'):
-                hot = sorted(data['main_freq'].items(), key=lambda x: x[1], reverse=True)[:10]
-                hot_nums = [str(num) for num, _ in hot]
+            hot = sorted(freq.items(), key=lambda x: x[1], reverse=True)[:8]
+            cold = sorted(freq.items(), key=lambda x: x[1])[:8]
 
-                cold = sorted(data['main_freq'].items(), key=lambda x: x[1])[:10]
-                cold_nums = [str(num) for num, _ in cold]
-
-                preview_text = f"""🔥 Hot Numbers:
-{', '.join(hot_nums)}
-
-🥶 Cold Numbers:
-{', '.join(cold_nums)}
-
-Click 'View Detailed Statistics'
-for complete analysis."""
-
-                self.stats_preview.setText(preview_text)
+            self.hot_row["values"].setText("  ".join(str(n) for n, _ in hot))
+            self.cold_row["values"].setText("  ".join(str(n) for n, _ in cold))
         except Exception as e:
-            self.stats_preview.setText(f"Error loading stats: {str(e)}")
+            self.hot_row["values"].setText(f"Error: {e}")
 
-    def generate_single(self):
-        """Generate a single set of numbers"""
+    # — Generate —
+    def _on_generate(self):
         try:
-            # Clear previous results
-            while self.generated_layout.count():
-                child = self.generated_layout.takeAt(0)
-                if child.widget():
-                    child.widget().deleteLater()
-
-            # Generate numbers
-            data = self.lottery.load_from_files()
-            strategy = self.strategy_manager.get_strategy(self.current_strategy)
-            main_numbers, bonus_number = strategy.generate_numbers(
-                data,
-                self.lottery.get_game_config()
-            )
-
-            # Display main numbers
-            main_label = QLabel("Your Lucky Numbers:")
-            main_label.setFont(QFont("Arial", 14, QFont.Weight.Bold))
-            self.generated_layout.addWidget(main_label, 0, 0, 1, -1)
-
-            sorted_nums = sorted(main_numbers)
-            for i, num in enumerate(sorted_nums):
-                ball = NumberBallWidget(num, is_bonus=False)
-                row = 1 + (i // 4)
-                col = i % 4
-                self.generated_layout.addWidget(ball, row, col)
-
-            # Display bonus number if applicable
-            if bonus_number is not None:
-                bonus_label = QLabel("Bonus:")
-                bonus_label.setFont(QFont("Arial", 12, QFont.Weight.Bold))
-                bonus_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-
-                next_row = ((len(sorted_nums) - 1) // 4) + 2
-                self.generated_layout.addWidget(bonus_label, next_row, 0)
-
-                bonus_ball = NumberBallWidget(bonus_number, is_bonus=True)
-                self.generated_layout.addWidget(bonus_ball, next_row, 1)
-
-            # Good luck message
-            luck_label = QLabel("🍀 Good luck! 🍀")
-            luck_label.setFont(QFont("Arial", 16))
-            luck_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            luck_label.setStyleSheet("color: #27AE60; margin-top: 20px;")
-            final_row = ((len(sorted_nums) - 1) // 4) + 3
-            self.generated_layout.addWidget(luck_label, final_row, 0, 1, -1)
-
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to generate numbers: {str(e)}")
-
-    def generate_multiple(self):
-        """Generate multiple sets of numbers"""
-        try:
-            count = self.count_spin.value()
             data = self.lottery.load_from_files()
             strategy = self.strategy_manager.get_strategy(self.current_strategy)
             config = self.lottery.get_game_config()
+            count = self.count_spin.value()
 
-            results = []
-            used_sets = set()
-            sets_generated = 0
+            self._clear_layout(self.results_container)
+
+            seen = set()
             attempts = 0
-            max_attempts = count * 10
-
-            while sets_generated < count and attempts < max_attempts:
+            sets_made = 0
+            while sets_made < count and attempts < count * 20:
                 attempts += 1
-                main_numbers, bonus_number = strategy.generate_numbers(data, config)
-                main_tuple = tuple(sorted(main_numbers))
-
-                if main_tuple not in used_sets:
-                    used_sets.add(main_tuple)
-                    sets_generated += 1
-
-                    nums_str = ", ".join([str(n) for n in sorted(main_numbers)])
-                    if bonus_number is not None:
-                        results.append(f"Set {sets_generated}: [{nums_str}] + Bonus: {bonus_number}")
-                    else:
-                        results.append(f"Set {sets_generated}: [{nums_str}]")
-
-            # Display results
-            result_text = "\n".join(results)
-            self.multi_results.setText(result_text)
-            self.multi_results.setStyleSheet("""
-                QLabel {
-                    font-family: monospace;
-                    font-size: 13px;
-                    line-height: 1.6;
-                    padding: 10px;
-                }
-            """)
+                main, bonus = strategy.generate_numbers(data, config)
+                key = tuple(sorted(main))
+                if key in seen:
+                    continue
+                seen.add(key)
+                sets_made += 1
+                self.results_container.addLayout(self._build_set_row(sets_made, sorted(main), bonus, count))
 
         except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to generate multiple sets: {str(e)}")
+            QMessageBox.critical(self, "Error", f"Failed to generate: {e}")
 
-    def show_statistics(self):
-        """Show detailed statistics in a dialog"""
+    def _build_set_row(self, idx: int, numbers: List[int], bonus: Optional[int], total: int) -> QHBoxLayout:
+        row = QHBoxLayout()
+        row.setSpacing(8)
+
+        if total > 1:
+            tag = QLabel(f"#{idx}")
+            tag.setStyleSheet(
+                f"color: {Theme.TEXT_MUTED}; font-size: 11px; font-weight: 600; "
+                f"letter-spacing: 1px;"
+            )
+            tag.setFixedWidth(28)
+            row.addWidget(tag)
+
+        for n in numbers:
+            row.addWidget(NumberBall(n, size=40))
+
+        if bonus is not None:
+            sep = QLabel("·")
+            sep.setStyleSheet(f"color: {Theme.TEXT_MUTED}; font-size: 16px; padding: 0 2px;")
+            row.addWidget(sep)
+            row.addWidget(NumberBall(bonus, is_bonus=True, size=40))
+
+        row.addStretch()
+        return row
+
+    # — Statistics modal —
+    def _show_statistics(self):
         try:
             stats = self.lottery.get_statistics_summary()
-
-            dialog = QDialog(self)
-            dialog.setWindowTitle(f"{self.lottery.name} - Detailed Statistics")
-            dialog.resize(700, 600)
-
-            layout = QVBoxLayout(dialog)
-
-            stats_text = QLabel(stats)
-            stats_text.setFont(QFont("Courier", 11))
-            stats_text.setWordWrap(True)
-            stats_text.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-
-            scroll = QScrollArea()
-            scroll.setWidgetResizable(True)
-            scroll.setWidget(stats_text)
-            layout.addWidget(scroll)
-
-            close_btn = QPushButton("Close")
-            close_btn.clicked.connect(dialog.close)
-            layout.addWidget(close_btn)
-
-            dialog.exec()
-
         except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to load statistics: {str(e)}")
+            QMessageBox.critical(self, "Error", f"Failed to load statistics: {e}")
+            return
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle(f"{self.lottery.name} — Statistics")
+        dialog.resize(720, 640)
+
+        layout = QVBoxLayout(dialog)
+        layout.setContentsMargins(20, 20, 20, 20)
+
+        body = QLabel(stats)
+        body.setFont(QFont("Menlo", 11))
+        body.setWordWrap(True)
+        body.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        body.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
+        body.setStyleSheet(f"color: {Theme.TEXT}; padding: 8px;")
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setWidget(body)
+        scroll.setStyleSheet(f"QScrollArea {{ border: 1px solid {Theme.BORDER}; border-radius: 8px; }}")
+        layout.addWidget(scroll)
+
+        close_btn = ghost_button("Close")
+        close_btn.clicked.connect(dialog.close)
+        btn_row = QHBoxLayout()
+        btn_row.addStretch()
+        btn_row.addWidget(close_btn)
+        layout.addLayout(btn_row)
+
+        dialog.exec()
 
 
+# ────────────────────────────────────────────────────────────────────
+# Settings dialog
+# ────────────────────────────────────────────────────────────────────
 class SettingsDialog(QDialog):
-    """Settings dialog for API management and configuration"""
-
     def __init__(self, lotteries: dict, parent=None):
         super().__init__(parent)
         self.lotteries = lotteries
         self.setWindowTitle("Settings")
-        self.resize(600, 400)
-        self.setup_ui()
+        self.resize(560, 480)
+        self._build()
 
-    def setup_ui(self):
-        """Setup settings dialog UI"""
+    def _build(self):
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(24, 24, 24, 24)
+        layout.setSpacing(16)
 
-        # API Management section
-        api_group = QGroupBox("API Data Management")
-        api_layout = QVBoxLayout(api_group)
+        header = QLabel("Data Management")
+        header.setStyleSheet(f"color: {Theme.TEXT}; font-size: 18px; font-weight: 600;")
+        layout.addWidget(header)
 
-        update_btn = QPushButton("🌐 Update Lottery Data from API")
-        update_btn.clicked.connect(self.update_from_api)
-        update_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #3498DB;
-                color: white;
-                border: none;
-                border-radius: 5px;
-                padding: 12px;
-                font-size: 14px;
-            }
-            QPushButton:hover {
-                background-color: #2980B9;
-            }
-        """)
-        api_layout.addWidget(update_btn)
+        sub = QLabel("Update or verify the local cache against the API.")
+        sub.setStyleSheet(f"color: {Theme.TEXT_DIM}; font-size: 13px;")
+        layout.addWidget(sub)
 
-        quick_check_btn = QPushButton("🔍 Quick Data Check (last 3 years)")
-        quick_check_btn.clicked.connect(lambda: self.check_data(quick=True))
-        quick_check_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #16A085;
-                color: white;
-                border: none;
-                border-radius: 5px;
-                padding: 12px;
-                font-size: 14px;
-            }
-            QPushButton:hover {
-                background-color: #138D75;
-            }
-        """)
-        api_layout.addWidget(quick_check_btn)
+        layout.addSpacing(8)
 
-        full_check_btn = QPushButton("🔍 Full Data Check (all years - slower)")
-        full_check_btn.clicked.connect(lambda: self.check_data(quick=False))
-        full_check_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #E67E22;
-                color: white;
-                border: none;
-                border-radius: 5px;
-                padding: 12px;
-                font-size: 14px;
-            }
-            QPushButton:hover {
-                background-color: #D35400;
-            }
-        """)
-        api_layout.addWidget(full_check_btn)
+        update = primary_button("Update from API")
+        update.clicked.connect(self._update_from_api)
+        layout.addWidget(update)
 
-        layout.addWidget(api_group)
+        quick = ghost_button("Quick check (last 3 years)")
+        quick.clicked.connect(lambda: self._check_data(quick=True))
+        layout.addWidget(quick)
 
-        # Progress bar
+        full = ghost_button("Full check (all years — slow)")
+        full.clicked.connect(lambda: self._check_data(quick=False))
+        layout.addWidget(full)
+
         self.progress_bar = QProgressBar()
         self.progress_bar.setVisible(False)
+        self.progress_bar.setTextVisible(False)
+        self.progress_bar.setFixedHeight(6)
         layout.addWidget(self.progress_bar)
 
         self.status_label = QLabel("")
         self.status_label.setWordWrap(True)
+        self.status_label.setStyleSheet(f"color: {Theme.TEXT_DIM}; font-size: 12px;")
         layout.addWidget(self.status_label)
 
         layout.addStretch()
 
-        # Close button
-        close_btn = QPushButton("Close")
-        close_btn.clicked.connect(self.close)
-        layout.addWidget(close_btn)
+        close = ghost_button("Close")
+        close.clicked.connect(self.close)
+        bottom = QHBoxLayout()
+        bottom.addStretch()
+        bottom.addWidget(close)
+        layout.addLayout(bottom)
 
-    def update_from_api(self):
-        """Update lottery data from API"""
-        self.status_label.setText("Checking for new draws...")
+    def _update_from_api(self):
+        self.status_label.setText("Checking for new draws…")
         self.progress_bar.setVisible(True)
-        self.progress_bar.setRange(0, 0)  # Indeterminate
+        self.progress_bar.setRange(0, 0)
+        QApplication.processEvents()
 
-        # Check all lotteries for updates
-        updates_available = {}
-        for key, lottery in self.lotteries.items():
+        updates = {}
+        for lottery in self.lotteries.values():
             try:
-                new_count = lottery.check_for_new_draws()
-                if new_count == -1:
-                    updates_available[lottery.name] = "initial"
-                elif new_count > 0:
-                    updates_available[lottery.name] = new_count
+                count = lottery.check_for_new_draws()
+                if count == -1:
+                    updates[lottery.name] = "initial"
+                elif count > 0:
+                    updates[lottery.name] = count
             except Exception as e:
-                QMessageBox.warning(self, "Error", f"{lottery.name}: {str(e)}")
+                QMessageBox.warning(self, "Error", f"{lottery.name}: {e}")
 
         self.progress_bar.setVisible(False)
 
-        if not updates_available:
-            QMessageBox.information(self, "Up to Date", "All lotteries are up to date!")
-            self.status_label.setText("✅ All lotteries are up to date")
+        if not updates:
+            QMessageBox.information(self, "Up to date", "All lotteries are current.")
+            self.status_label.setText("✓ All lotteries up to date")
             return
 
-        # Show updates and prompt user
-        message = "Updates available:\n\n"
-        for name, info in updates_available.items():
-            if info == "initial":
-                message += f"• {name}: Initial fetch needed\n"
-            else:
-                message += f"• {name}: {info} new draw(s)\n"
+        msg = "Updates available:\n\n"
+        for name, info in updates.items():
+            msg += f"• {name}: {'initial fetch' if info == 'initial' else f'{info} new draw(s)'}\n"
+        msg += "\nProceed?"
 
-        message += "\nWould you like to update now?"
+        if QMessageBox.question(self, "Updates available", msg) == QMessageBox.StandardButton.Yes:
+            self._perform_updates(updates)
 
-        reply = QMessageBox.question(
-            self, "Updates Available", message,
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-        )
-
-        if reply == QMessageBox.StandardButton.Yes:
-            self.perform_updates(updates_available)
-
-    def perform_updates(self, updates_available: dict):
-        """Perform the actual updates"""
+    def _perform_updates(self, updates: dict):
         self.progress_bar.setVisible(True)
-        self.progress_bar.setRange(0, len(updates_available))
+        self.progress_bar.setRange(0, len(updates))
         self.progress_bar.setValue(0)
 
-        for idx, (lottery_name, info) in enumerate(updates_available.items()):
-            self.status_label.setText(f"Updating {lottery_name}...")
+        for idx, (name, info) in enumerate(updates.items()):
+            self.status_label.setText(f"Updating {name}…")
             QApplication.processEvents()
 
-            lottery = None
-            for key, lott in self.lotteries.items():
-                if lott.name == lottery_name:
-                    lottery = lott
-                    break
-
+            lottery = next((l for l in self.lotteries.values() if l.name == name), None)
             if lottery:
                 try:
                     if info == "initial":
                         lottery.fetch_from_api()
                     else:
                         lottery.update_from_api()
-                    self.status_label.setText(f"✅ {lottery_name} updated successfully")
                 except Exception as e:
-                    QMessageBox.warning(self, "Error", f"{lottery_name}: {str(e)}")
+                    QMessageBox.warning(self, "Error", f"{name}: {e}")
 
             self.progress_bar.setValue(idx + 1)
             QApplication.processEvents()
 
         self.progress_bar.setVisible(False)
-        QMessageBox.information(self, "Complete", "All updates completed!")
+        self.status_label.setText("✓ Updates complete")
+        QMessageBox.information(self, "Complete", "All updates finished.")
 
-    def check_data(self, quick: bool = True):
-        """Check for missing data"""
-        check_type = "Quick" if quick else "Full"
-        self.status_label.setText(f"{check_type} data check in progress...")
+    def _check_data(self, quick: bool = True):
+        self.status_label.setText(f"{'Quick' if quick else 'Full'} check in progress…")
         self.progress_bar.setVisible(True)
         self.progress_bar.setRange(0, 0)
+        QApplication.processEvents()
 
-        missing_data = {}
-        for key, lottery in self.lotteries.items():
+        missing = {}
+        for lottery in self.lotteries.values():
             try:
-                def progress_callback(year, idx, total):
-                    self.status_label.setText(f"Checking {lottery.name}: {year} ({idx}/{total})")
+                def cb(year, i, total, _name=lottery.name):
+                    self.status_label.setText(f"Checking {_name}: {year} ({i}/{total})")
                     QApplication.processEvents()
 
-                years_with_issues = lottery.check_for_missing_years(
-                    quick_check=quick,
-                    progress_callback=progress_callback
-                )
-
-                if years_with_issues:
-                    missing_data[lottery.name] = years_with_issues
+                issues = lottery.check_for_missing_years(quick_check=quick, progress_callback=cb)
+                if issues:
+                    missing[lottery.name] = issues
             except Exception as e:
-                QMessageBox.warning(self, "Error", f"{lottery.name}: {str(e)}")
+                QMessageBox.warning(self, "Error", f"{lottery.name}: {e}")
 
         self.progress_bar.setVisible(False)
 
-        if not missing_data:
-            QMessageBox.information(
-                self, "Complete",
-                "✨ All lotteries have complete and accurate data!"
-            )
-            self.status_label.setText("✅ Data integrity check passed")
-        else:
-            message = "Issues found:\n\n"
-            for name, years_dict in missing_data.items():
-                message += f"{name}:\n"
-                for year, info in sorted(years_dict.items()):
-                    message += f"  • {year}: {info['missing']} missing draw(s)\n"
+        if not missing:
+            self.status_label.setText("✓ Data integrity verified")
+            QMessageBox.information(self, "Clean", "All lotteries have complete data.")
+            return
 
-            message += "\nWould you like to refetch the missing data?"
+        msg = "Issues found:\n\n"
+        for name, years in missing.items():
+            msg += f"{name}:\n"
+            for year, info in sorted(years.items()):
+                msg += f"  • {year}: {info['missing']} missing\n"
+        msg += "\nRefetch missing data?"
 
-            reply = QMessageBox.question(
-                self, "Issues Found", message,
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-            )
+        if QMessageBox.question(self, "Issues found", msg) == QMessageBox.StandardButton.Yes:
+            self._fix_missing(missing)
 
-            if reply == QMessageBox.StandardButton.Yes:
-                self.fix_missing_data(missing_data)
-
-    def fix_missing_data(self, missing_data: dict):
-        """Fix missing data by refetching"""
+    def _fix_missing(self, missing: dict):
         self.progress_bar.setVisible(True)
-        self.progress_bar.setRange(0, len(missing_data))
+        self.progress_bar.setRange(0, len(missing))
         self.progress_bar.setValue(0)
 
-        for idx, (lottery_name, years_dict) in enumerate(missing_data.items()):
-            self.status_label.setText(f"Refetching data for {lottery_name}...")
+        for idx, (name, years) in enumerate(missing.items()):
+            self.status_label.setText(f"Refetching {name}…")
             QApplication.processEvents()
 
-            lottery = None
-            for key, lott in self.lotteries.items():
-                if lott.name == lottery_name:
-                    lottery = lott
-                    break
-
+            lottery = next((l for l in self.lotteries.values() if l.name == name), None)
             if lottery:
                 try:
-                    lottery.fetch_missing_years(years_dict)
-                    self.status_label.setText(f"✅ {lottery_name} data refreshed")
+                    lottery.fetch_missing_years(years)
                 except Exception as e:
-                    QMessageBox.warning(self, "Error", f"{lottery_name}: {str(e)}")
+                    QMessageBox.warning(self, "Error", f"{name}: {e}")
 
             self.progress_bar.setValue(idx + 1)
             QApplication.processEvents()
 
         self.progress_bar.setVisible(False)
-        QMessageBox.information(self, "Complete", "Data refresh completed!")
+        self.status_label.setText("✓ Refetch complete")
+        QMessageBox.information(self, "Done", "Missing data refreshed.")
 
 
+# ────────────────────────────────────────────────────────────────────
+# Main window
+# ────────────────────────────────────────────────────────────────────
 class LottoGUIApp(QMainWindow):
-    """Main application window"""
-
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Multi-Lottery System")
-        self.setGeometry(100, 100, 1400, 800)
+        self.setGeometry(120, 100, 980, 820)
+        self.setMinimumSize(720, 640)
 
-        # Initialize lottery instances
         self.lotteries = {
-            '1': LottoMax(),
-            '2': Lotto649(),
-            '3': DailyGrand(),
+            "1": LottoMax(),
+            "2": Lotto649(),
+            "3": DailyGrand(),
         }
         self.strategy_manager = StrategyManager()
 
-        self.setup_ui()
-        self.setup_menu_bar()
-        self.apply_theme()
+        self._build()
+        self._build_menu()
+        self._apply_theme()
 
-    def setup_ui(self):
-        """Setup the main UI"""
-        # Central widget with tabs
-        central_widget = QWidget()
-        self.setCentralWidget(central_widget)
+    def _build(self):
+        central = QWidget()
+        self.setCentralWidget(central)
 
-        layout = QVBoxLayout(central_widget)
+        layout = QVBoxLayout(central)
+        layout.setContentsMargins(28, 24, 28, 24)
+        layout.setSpacing(20)
 
-        # Title
-        title = QLabel("🎰 Multi-Lottery System 🎰")
-        title.setFont(QFont("Arial", 24, QFont.Weight.Bold))
-        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        title.setStyleSheet("color: #2C3E50; margin: 20px;")
-        layout.addWidget(title)
+        # Header
+        header = QHBoxLayout()
+        header.setSpacing(16)
 
-        # Tab widget for different lotteries
-        self.tabs = QTabWidget()
-        self.tabs.setTabPosition(QTabWidget.TabPosition.North)
-        self.tabs.setMovable(False)
-
-        # Create tabs for each lottery
-        self.lotto_max_tab = LotteryTabWidget(
-            self.lotteries['1'],
-            self.strategy_manager
+        title = QLabel("Multi-Lottery")
+        title.setStyleSheet(
+            f"color: {Theme.TEXT}; font-size: 20px; font-weight: 700; letter-spacing: -0.3px;"
         )
-        self.tabs.addTab(self.lotto_max_tab, "🎯 Lotto Max")
+        header.addWidget(title)
 
-        self.lotto_649_tab = LotteryTabWidget(
-            self.lotteries['2'],
-            self.strategy_manager
-        )
-        self.tabs.addTab(self.lotto_649_tab, "🎲 Lotto 6/49")
+        header.addStretch()
 
-        self.daily_grand_tab = LotteryTabWidget(
-            self.lotteries['3'],
-            self.strategy_manager
-        )
-        self.tabs.addTab(self.daily_grand_tab, "🌟 Daily Grand")
+        # Lottery switcher (segmented control)
+        self.switcher = self._build_switcher()
+        header.addWidget(self.switcher)
 
-        layout.addWidget(self.tabs)
+        settings_btn = ghost_button("⚙  Settings")
+        settings_btn.clicked.connect(self._show_settings)
+        header.addWidget(settings_btn)
+
+        layout.addLayout(header)
+
+        # Stacked content area
+        self.stack = QStackedWidget()
+        self.views = []
+        for key in ("1", "2", "3"):
+            view = LotteryView(self.lotteries[key], self.strategy_manager)
+            self.views.append(view)
+
+            scroll = QScrollArea()
+            scroll.setWidgetResizable(True)
+            scroll.setFrameShape(QFrame.Shape.NoFrame)
+            scroll.setWidget(view)
+            self.stack.addWidget(scroll)
+
+        layout.addWidget(self.stack, stretch=1)
 
         # Status bar
         self.statusBar().showMessage("Ready")
+        self.statusBar().setStyleSheet(
+            f"QStatusBar {{ background-color: {Theme.BG}; color: {Theme.TEXT_MUTED}; "
+            f"font-size: 11px; border-top: 1px solid {Theme.BORDER_SOFT}; }}"
+        )
 
-    def setup_menu_bar(self):
-        """Setup the menu bar"""
+    def _build_switcher(self) -> QWidget:
+        wrap = QFrame()
+        wrap.setObjectName("Switcher")
+        wrap.setStyleSheet(f"""
+            QFrame#Switcher {{
+                background-color: {Theme.SURFACE};
+                border: 1px solid {Theme.BORDER};
+                border-radius: 8px;
+            }}
+        """)
+        row = QHBoxLayout(wrap)
+        row.setContentsMargins(4, 4, 4, 4)
+        row.setSpacing(2)
+
+        labels = ["Lotto Max", "6/49", "Daily Grand"]
+        self.switcher_buttons = []
+        for i, label in enumerate(labels):
+            btn = QPushButton(label)
+            btn.setCheckable(True)
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn.setStyleSheet(f"""
+                QPushButton {{
+                    background-color: transparent;
+                    color: {Theme.TEXT_DIM};
+                    border: none;
+                    border-radius: 6px;
+                    padding: 6px 16px;
+                    font-size: 13px;
+                    font-weight: 500;
+                }}
+                QPushButton:hover {{ color: {Theme.TEXT}; }}
+                QPushButton:checked {{
+                    background-color: {Theme.ACCENT};
+                    color: white;
+                    font-weight: 600;
+                }}
+            """)
+            btn.clicked.connect(lambda _checked, idx=i: self._switch_to(idx))
+            row.addWidget(btn)
+            self.switcher_buttons.append(btn)
+
+        self.switcher_buttons[0].setChecked(True)
+        return wrap
+
+    def _switch_to(self, index: int):
+        for i, btn in enumerate(self.switcher_buttons):
+            btn.setChecked(i == index)
+        self.stack.setCurrentIndex(index)
+
+    def _build_menu(self):
         menubar = self.menuBar()
 
-        # File menu
         file_menu = menubar.addMenu("File")
-
-        refresh_action = QAction("Refresh All Data", self)
-        refresh_action.triggered.connect(self.refresh_all)
-        file_menu.addAction(refresh_action)
-
+        refresh = QAction("Refresh All", self)
+        refresh.setShortcut("Ctrl+R")
+        refresh.triggered.connect(self._refresh_all)
+        file_menu.addAction(refresh)
         file_menu.addSeparator()
-
         quit_action = QAction("Quit", self)
         quit_action.setShortcut("Ctrl+Q")
         quit_action.triggered.connect(self.close)
         file_menu.addAction(quit_action)
 
-        # Settings menu
         settings_menu = menubar.addMenu("Settings")
+        api_action = QAction("Data Management", self)
+        api_action.triggered.connect(self._show_settings)
+        settings_menu.addAction(api_action)
 
-        api_settings_action = QAction("API & Data Management", self)
-        api_settings_action.triggered.connect(self.show_settings)
-        settings_menu.addAction(api_settings_action)
-
-        # Help menu
         help_menu = menubar.addMenu("Help")
+        about = QAction("About", self)
+        about.triggered.connect(self._show_about)
+        help_menu.addAction(about)
 
-        about_action = QAction("About", self)
-        about_action.triggered.connect(self.show_about)
-        help_menu.addAction(about_action)
+    def _refresh_all(self):
+        for view in self.views:
+            view.refresh()
+        self.statusBar().showMessage("Refreshed", 2000)
 
-    def apply_theme(self):
-        """Apply custom theme to the application"""
-        self.setStyleSheet("""
-            QMainWindow {
-                background-color: #ECF0F1;
-            }
-            QTabWidget::pane {
-                border: 1px solid #BDC3C7;
-                border-radius: 5px;
-                background-color: white;
-            }
-            QTabBar::tab {
-                background-color: #BDC3C7;
-                color: #2C3E50;
-                padding: 10px 20px;
-                margin: 2px;
-                border-top-left-radius: 5px;
-                border-top-right-radius: 5px;
-                font-size: 14px;
-                font-weight: bold;
-            }
-            QTabBar::tab:selected {
-                background-color: white;
-                color: #3498DB;
-            }
-            QTabBar::tab:hover {
-                background-color: #D5DBDB;
-            }
-            QGroupBox {
-                font-weight: bold;
-                font-size: 14px;
-                border: 2px solid #BDC3C7;
-                border-radius: 8px;
-                margin-top: 10px;
-                padding-top: 15px;
-                background-color: white;
-            }
-            QGroupBox::title {
-                subcontrol-origin: margin;
-                left: 10px;
-                padding: 0 5px;
-            }
-        """)
-
-    def refresh_all(self):
-        """Refresh all lottery data"""
-        self.statusBar().showMessage("Refreshing all data...")
-
-        # Refresh each tab
-        self.lotto_max_tab.load_latest_draw()
-        self.lotto_max_tab.load_stats_preview()
-
-        self.lotto_649_tab.load_latest_draw()
-        self.lotto_649_tab.load_stats_preview()
-
-        self.daily_grand_tab.load_latest_draw()
-        self.daily_grand_tab.load_stats_preview()
-
-        self.statusBar().showMessage("All data refreshed!", 3000)
-
-    def show_settings(self):
-        """Show settings dialog"""
+    def _show_settings(self):
         dialog = SettingsDialog(self.lotteries, self)
         dialog.exec()
+        self._refresh_all()
 
-        # Refresh data after settings close
-        self.refresh_all()
-
-    def show_about(self):
-        """Show about dialog"""
+    def _show_about(self):
         QMessageBox.about(
             self,
-            "About Multi-Lottery System",
-            """<h2>Multi-Lottery System</h2>
-            <p><b>Version:</b> 2.0 (GUI)</p>
-            <p><b>Description:</b> A comprehensive lottery prediction system for
-            Canadian lotteries including Lotto Max, Lotto 6/49, and Daily Grand.</p>
-            <p><b>Features:</b></p>
-            <ul>
-                <li>Multiple number generation strategies</li>
-                <li>Historical data analysis</li>
-                <li>Real-time API updates</li>
-                <li>Detailed statistics and visualizations</li>
-            </ul>
-            <p><b>Developed with:</b> Python, PyQt6</p>
-            """
+            "About",
+            "<h3>Multi-Lottery System</h3>"
+            "<p>Number generator and analysis for Canadian lotteries.</p>"
+            "<p style='color:#8b949e;'>Built with PyQt6.</p>",
         )
+
+    def _apply_theme(self):
+        self.setStyleSheet(f"""
+            QMainWindow, QWidget {{
+                background-color: {Theme.BG};
+                color: {Theme.TEXT};
+                font-family: -apple-system, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+                font-size: 13px;
+            }}
+            QScrollArea {{ background-color: transparent; border: none; }}
+            QScrollBar:vertical {{
+                background: transparent; width: 10px; margin: 0;
+            }}
+            QScrollBar::handle:vertical {{
+                background: {Theme.BORDER}; border-radius: 5px; min-height: 30px;
+            }}
+            QScrollBar::handle:vertical:hover {{ background: {Theme.TEXT_MUTED}; }}
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
+            QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{ background: transparent; }}
+
+            QComboBox {{
+                background-color: {Theme.SURFACE_2};
+                color: {Theme.TEXT};
+                border: 1px solid {Theme.BORDER};
+                border-radius: 6px;
+                padding: 6px 10px;
+                font-size: 13px;
+                min-height: 24px;
+            }}
+            QComboBox:hover {{ border-color: {Theme.TEXT_MUTED}; }}
+            QComboBox::drop-down {{ border: none; width: 22px; }}
+            QComboBox::down-arrow {{ image: none; }}
+            QComboBox QAbstractItemView {{
+                background-color: {Theme.SURFACE_2};
+                color: {Theme.TEXT};
+                border: 1px solid {Theme.BORDER};
+                border-radius: 6px;
+                selection-background-color: {Theme.ACCENT};
+                selection-color: white;
+                padding: 4px;
+                outline: none;
+            }}
+
+            QSpinBox {{
+                background-color: {Theme.SURFACE_2};
+                color: {Theme.TEXT};
+                border: 1px solid {Theme.BORDER};
+                border-radius: 6px;
+                padding: 4px 6px;
+                font-size: 13px;
+            }}
+            QSpinBox:hover {{ border-color: {Theme.TEXT_MUTED}; }}
+            QSpinBox::up-button, QSpinBox::down-button {{
+                background-color: transparent; border: none; width: 16px;
+            }}
+
+            QProgressBar {{
+                background-color: {Theme.SURFACE_2};
+                border: none;
+                border-radius: 3px;
+            }}
+            QProgressBar::chunk {{
+                background-color: {Theme.ACCENT};
+                border-radius: 3px;
+            }}
+
+            QMenuBar {{
+                background-color: {Theme.BG};
+                color: {Theme.TEXT_DIM};
+                border-bottom: 1px solid {Theme.BORDER_SOFT};
+                padding: 2px;
+            }}
+            QMenuBar::item {{ background: transparent; padding: 6px 12px; border-radius: 4px; }}
+            QMenuBar::item:selected {{ background: {Theme.SURFACE_2}; color: {Theme.TEXT}; }}
+            QMenu {{
+                background-color: {Theme.SURFACE_2};
+                color: {Theme.TEXT};
+                border: 1px solid {Theme.BORDER};
+                border-radius: 6px;
+                padding: 4px;
+            }}
+            QMenu::item {{ padding: 6px 24px; border-radius: 4px; }}
+            QMenu::item:selected {{ background-color: {Theme.ACCENT}; color: white; }}
+
+            QDialog {{ background-color: {Theme.BG}; }}
+            QMessageBox {{ background-color: {Theme.SURFACE}; }}
+            QMessageBox QLabel {{ color: {Theme.TEXT}; }}
+        """)
 
 
 def main():
-    """Main entry point"""
     app = QApplication(sys.argv)
     app.setApplicationName("Multi-Lottery System")
     app.setOrganizationName("LottoMax")
+    app.setStyle("Fusion")
 
-    # Set application-wide font
-    app.setFont(QFont("Arial", 11))
-
-    # Create and show main window
     window = LottoGUIApp()
     window.show()
-
     sys.exit(app.exec())
 
 
