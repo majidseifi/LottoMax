@@ -65,3 +65,5 @@ scripts/
 # Sensitive configuration files
 *_config.json
 api_keys.py
+.firecrawl/
+
